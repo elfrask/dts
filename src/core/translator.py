@@ -3,65 +3,13 @@ import logging
 import time
 from typing import Optional
 
-from src.io.formats import ProjectConfig, TranslationResult, TranslationProgress
-from src.io.file_loader import load_json, load_translation_dict, ensure_json
+from src.io.formats import ProjectConfig, TranslationProgress
+from src.io.file_loader import load_json, ensure_json
 from src.io.file_writer import write_json
-from src.core.events import EventBus, Signal
+from src.core.events import EventBus
 from src.core.provider import TranslationProvider
 
 logger = logging.getLogger(__name__)
-
-
-def _show_extremes(string: str, margin: int = 10) -> str:
-    return f"{repr(string[:margin])} - {repr(string[-margin:])}"
-
-
-def str2json(response: str) -> dict[str, str]:
-    _original = response
-    response = response.replace("`", "")
-
-    while response[:1] != "{":
-        response = response[1:]
-        if not response:
-            raise ValueError("Response is not JSON: " + _original)
-
-    while response[-1:] != "}":
-        response = response[:-1]
-        if response[-2:] != '",':
-            response = response[:-1] + "}"
-            break
-        if not response:
-            raise ValueError("Response is not JSON: " + _original)
-
-    import unicodedata
-    while True:
-        try:
-            normalizado = unicodedata.normalize("NFKD", response)
-            ascii_text = normalizado.encode("ASCII", "ignore").decode("ASCII")
-            return json.loads(ascii_text)
-        except Exception:
-            logger.warning("reducing... %s", _show_extremes(response))
-
-        while response[-2:] != '",':
-            response = response[:-1]
-            if not response:
-                raise ValueError("Response is not JSON: " + _original)
-        response = response[:-1] + "}"
-
-
-def new_str2json(response: str) -> dict[str, str]:
-    json_limpio = response.strip("```json").strip("```").strip()
-
-    while True:
-        try:
-            return json.loads(json_limpio)
-        except Exception as e:
-            while json_limpio[-2:] != '",':
-                json_limpio = json_limpio[:-1]
-                if not json_limpio:
-                    raise ValueError(f"Response is not JSON: {response}") from e
-            json_limpio = json_limpio[:-1] + "}"
-            logger.warning("reducing... %s", _show_extremes(json_limpio))
 
 
 def use_translate(
@@ -91,22 +39,13 @@ def use_translate(
     keys = list(untranslated.keys())
     done_count = len(output_data)
 
-    def _emit_progress(chunk_idx: int, chunk_total: int):
-        if event_bus:
-            progress = TranslationProgress(
-                total=total,
-                completed=done_count,
-                current_chunk=chunk_idx,
-                total_chunks=chunk_total,
-            )
-            event_bus.emit_progress(done_count, total + done_count)
-
     tries = 0
     index = 0
     chunk_size = config.chunk_size
 
     while index < total:
-        _emit_progress(index, total)
+        if event_bus:
+            event_bus.emit_progress(done_count, total + done_count)
 
         if tries >= 5:
             msg = f"Max retries reached at {index}/{total}"
@@ -115,7 +54,8 @@ def use_translate(
                 event_bus.emit_error(msg)
             break
 
-        chunk_keys = keys[index : index + chunk_size]
+        effective_chunk = max(1, chunk_size // (tries + 1))
+        chunk_keys = keys[index : index + effective_chunk]
         chunk = {k: untranslated[k] for k in chunk_keys}
 
         try:
@@ -140,11 +80,16 @@ def use_translate(
 
             if result.failed_keys:
                 logger.warning("Failed keys in chunk: %s", result.failed_keys)
+        else:
+            logger.error("Batch failed: %s", result.error)
+            tries += 1
+            time.sleep(3)
+            continue
 
         index += len(chunk_keys)
 
         if index < total:
-            logger.info(f"Waiting 7s before next chunk ({index}/{total})")
+            logger.info("Waiting 7s before next chunk (%d/%d)", index, total)
             time.sleep(7)
 
     msg = f"Translation complete: {done_count}/{done_count} dialogs"

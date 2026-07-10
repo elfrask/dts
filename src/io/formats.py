@@ -59,7 +59,7 @@ class AppConfig:
 
 @dataclass
 class ProjectConfig:
-    route_strings_file: str = ""
+    route_strings_file: str = "strings.json"
     route_input_file: str = "lang_input.json"
     route_output_file: str = "lang_es_out.json"
     route_normalize_file: str = "lang_es_normalize.json"
@@ -91,7 +91,7 @@ class ProjectConfig:
     @classmethod
     def from_dict(cls, data: dict) -> "ProjectConfig":
         return cls(
-            route_strings_file=data.get("route_strings_file", ""),
+            route_strings_file=data.get("route_strings_file", "strings.json"),
             route_input_file=data.get("route_input_file", "lang_input.json"),
             route_output_file=data.get("route_output_file", "lang_es_out.json"),
             route_strings_result_file=data.get("route_strings_result_file", "strings_es.json"),
