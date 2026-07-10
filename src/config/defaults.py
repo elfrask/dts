@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 PROJECT_DIR = Path.cwd()
@@ -6,13 +7,17 @@ DEFAULT_PATHS = {
     "route_input_file": "lang_input.json",
     "route_output_file": "lang_es_out.json",
     "route_strings_result_file": "strings_es.json",
+    "route_normalize_file": "lang_es_normalize.json",
     "route_manual_file": "lang_manual_edit.json",
     "umt_cli_path": "",
 }
 
 DEFAULT_CHUNK_SIZE = 200
 
-DEFAULT_API_KEYS: list[str] = []
+DEFAULT_APP_CONFIG_DIR = (
+    Path(os.environ.get("APPDATA", Path.home() / ".config")) / "dts"
+)
+DEFAULT_APP_CONFIG_FILE = DEFAULT_APP_CONFIG_DIR / "settings.json"
 
 DEFAULT_PROMPT = (
     "Actúa como un traductor profesional de nivel C2 de ingles el cual tu rol va a ser "
@@ -44,13 +49,10 @@ DEFAULT_MODEL = "gemini-2.5-flash"
 DEFAULT_PROVIDER = "gemini"
 
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
-DEFAULT_OLLAMA_MODEL = "llama3.2"
 DEFAULT_OLLAMA_TIMEOUT = 120
 
 DEFAULT_SETTINGS_FILE = "settings.json"
 
-DEFAULT_PROJECT_DIR_NAME = "dts_project"
-
 DEFAULT_UMT_DOWNLOAD_URL = (
-    "https://github.com/krzys-h/UndertaleModTool/releases/latest/download/UndertaleModCLI.zip"
+    "https://github.com/UnderminersTeam/UndertaleModTool/releases/download/0.9.1.1/UTMT_CLI_v0.9.1.1-Windows.zip"
 )

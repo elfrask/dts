@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Callable
 
-from src.io.formats import ProjectConfig, TranslationResult, ProviderType
+from src.io.formats import ProjectConfig, AppConfig, TranslationResult, ProviderType, OllamaConfig
 
 
 class TranslationProvider(ABC):
@@ -30,15 +30,15 @@ class TranslationProvider(ABC):
 
 
 class GeminiProvider(TranslationProvider):
-    def __init__(self, config: ProjectConfig):
-        self.config = config
+    def __init__(self, api_keys: list[str]):
+        self.api_keys = api_keys
 
     @property
     def name(self) -> str:
         return "gemini"
 
     def is_available(self) -> bool:
-        return len(self.config.api_keys) > 0
+        return len(self.api_keys) > 0
 
     def get_models(self) -> list[str]:
         return [
@@ -59,8 +59,8 @@ class GeminiProvider(TranslationProvider):
 
 
 class OllamaProvider(TranslationProvider):
-    def __init__(self, config: ProjectConfig):
-        self.config = config
+    def __init__(self, ollama_config: OllamaConfig):
+        self.ollama_config = ollama_config
 
     @property
     def name(self) -> str:
@@ -70,7 +70,7 @@ class OllamaProvider(TranslationProvider):
         import urllib.request
         import urllib.error
         try:
-            url = f"{self.config.ollama.host}/api/tags"
+            url = f"{self.ollama_config.host}/api/tags"
             urllib.request.urlopen(url, timeout=5)
             return True
         except (urllib.error.URLError, ConnectionError, TimeoutError):
@@ -81,7 +81,7 @@ class OllamaProvider(TranslationProvider):
         import urllib.request
         import urllib.error
         try:
-            url = f"{self.config.ollama.host}/api/tags"
+            url = f"{self.ollama_config.host}/api/tags"
             with urllib.request.urlopen(url, timeout=5) as resp:
                 data = json.loads(resp.read())
                 return [m["name"] for m in data.get("models", [])]
@@ -98,10 +98,10 @@ class OllamaProvider(TranslationProvider):
         raise NotImplementedError("Fase 2: implementar con Ollama REST API")
 
 
-def create_provider(config: ProjectConfig) -> TranslationProvider:
-    if config.provider == ProviderType.GEMINI:
-        return GeminiProvider(config)
-    elif config.provider == ProviderType.OLLAMA:
-        return OllamaProvider(config)
+def create_provider(app_config: AppConfig, project_config: ProjectConfig) -> TranslationProvider:
+    if project_config.provider == ProviderType.GEMINI:
+        return GeminiProvider(api_keys=app_config.api_keys)
+    elif project_config.provider == ProviderType.OLLAMA:
+        return OllamaProvider(ollama_config=app_config.ollama)
     else:
-        raise ValueError(f"Unknown provider: {config.provider}")
+        raise ValueError(f"Unknown provider: {project_config.provider}")
