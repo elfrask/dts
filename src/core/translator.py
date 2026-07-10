@@ -1,6 +1,7 @@
 import json
 import logging
 import time
+from pathlib import Path
 from typing import Optional
 
 from src.io.formats import ProjectConfig, TranslationProgress
@@ -15,8 +16,8 @@ logger = logging.getLogger(__name__)
 def use_translate(
     provider: TranslationProvider,
     config: ProjectConfig,
-    input_path: str,
-    output_path: str,
+    input_path: Path,
+    output_path: Path,
     event_bus: Optional[EventBus] = None,
     restart: bool = False,
 ) -> None:

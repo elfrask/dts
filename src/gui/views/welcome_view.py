@@ -1,24 +1,17 @@
+import json
 from pathlib import Path
-from typing import Optional
+
 
 import flet as ft
 
 from src.gui.state import GUIState
-from src.io.formats import AppConfig, ProjectConfig, OllamaConfig
-from src.config.settings import (
-    load_app_settings,
-    save_app_settings,
-    load_project,
-    save_project,
-)
+from src.io.formats import AppConfig, ProjectConfig, OllamaConfig, Project
+from src.config.settings import load_app_settings, save_app_settings, load_project, save_project
 from src.config.defaults import (
     DEFAULT_PROMPT,
     DEFAULT_CHUNK_SIZE,
     DEFAULT_MODEL,
-    DEFAULT_OLLAMA_HOST,
-    DEFAULT_OLLAMA_TIMEOUT,
 )
-from src.io.formats import Project
 
 
 def recent_projects_path() -> Path:
@@ -27,7 +20,6 @@ def recent_projects_path() -> Path:
 
 
 def load_recent_projects() -> list[str]:
-    import json
     path = recent_projects_path()
     if path.exists():
         try:
@@ -39,7 +31,6 @@ def load_recent_projects() -> list[str]:
 
 
 def save_recent_projects(projects: list[str]) -> None:
-    import json
     path = recent_projects_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
@@ -54,55 +45,67 @@ class WelcomeView(ft.Column):
         on_project_selected: callable,
     ) -> None:
         super().__init__()
-        self.page = page
+        self._page = page
         self.state = state
         self.on_project_selected = on_project_selected
         self.spacing = 20
         self.horizontal_alignment = ft.CrossAxisAlignment.CENTER
 
-        self._file_picker = ft.FilePicker(on_result=self._on_pick_dir)
-        self._strings_picker = ft.FilePicker(on_result=self._on_pick_strings)
-        page.overlay.extend([self._file_picker, self._strings_picker])
-
-        self._pending_create = False
         self._project_list = ft.Column(spacing=8)
 
         self._build()
 
     def _build(self) -> None:
         title = ft.Text(
-            "DTS v2 - Dialogue Translation System",
+            value="DTS v2 - Dialogue Translation System",
             size=28,
             weight=ft.FontWeight.BOLD,
         )
         subtitle = ft.Text(
-            "Traducción de diálogos de juegos GameMaker",
+            value="Traducción de diálogos de juegos Undertale y Deltarune por Frask Coffee",
             size=14,
             color=ft.Colors.GREY_400,
         )
+        
+        version = ft.Text(
+            value="Frask Coffee - DTS v2.0",
+            size=14,
+            color=ft.Colors.GREY_400,
+            top=2,
+            right=2,
+            
+        )
+
+        
+        
 
         open_btn = ft.ElevatedButton(
             "Abrir proyecto",
             icon=ft.Icons.FOLDER_OPEN,
-            on_click=lambda _: self._file_picker.get_directory_path(),
+            on_click=self._open_project_dialog,
         )
         create_btn = ft.ElevatedButton(
             "Crear nuevo proyecto",
             icon=ft.Icons.CREATE_NEW_FOLDER,
-            on_click=lambda _: self._start_create_project(),
+            on_click=self._start_create_project,
         )
         settings_btn = ft.ElevatedButton(
             "Configuración global",
             icon=ft.Icons.SETTINGS,
-            on_click=lambda _: self._open_global_settings(),
+            on_click=self._open_global_settings,
         )
 
         self._refresh_recent()
 
         self.controls = [
+            ft.Stack(
+                [version],
+                height=30
+            ),
             ft.Container(height=60),
             title,
             subtitle,
+            # version,
             ft.Container(height=20),
             ft.Row(
                 [open_btn, create_btn, settings_btn],
@@ -142,27 +145,63 @@ class WelcomeView(ft.Column):
         save_recent_projects(recent)
         self.on_project_selected(project)
 
-    def _on_pick_dir(self, e: ft.FilePickerResultEvent) -> None:
-        if e.path:
-            path = Path(e.path)
-            if self._pending_create:
-                self._create_project(path)
-            else:
-                self._open_project(path)
+    def _open_project_dialog(self, e: ft.ControlEvent) -> None:
+        """Dialog to type or paste a project directory path."""
+        path_tf = ft.TextField(
+            label="Ruta del proyecto",
+            hint_text="C:\\Users\\...\\deltarune-ch1",
+            width=400,
+        )
 
-    def _on_pick_strings(self, e: ft.FilePickerResultEvent) -> None:
-        if e.files and len(e.files) > 0:
-            path = Path(e.files[0].path)
-            if self.state.project:
-                self.state.project.config.route_strings_file = str(path)
-                save_project(self.state.project)
+        def _open() -> None:
+            raw = path_tf.value.strip()
+            if raw:
+                p = Path(raw)
+                if p.exists():
+                    self._open_project(p)
+                else:
+                    path_tf.error_text = "La ruta no existe"
+                    self._page.update()
+                    return
+            dlg.open = False
+            self._page.update()
 
-    def _start_create_project(self) -> None:
-        self._pending_create = True
-        self._file_picker.get_directory_path()
+        dlg = ft.AlertDialog(
+            title=ft.Text("Abrir proyecto"),
+            content=path_tf,
+            actions=[
+                ft.TextButton("Cancelar", on_click=lambda e: setattr(dlg, 'open', False) or self._page.update()),
+                ft.ElevatedButton("Abrir", on_click=lambda e: _open()),
+            ],
+        )
+        self._page.show_dialog(dlg)
+
+    def _start_create_project(self, e: ft.ControlEvent) -> None:
+        """Dialog to create a new project at a given path."""
+        path_tf = ft.TextField(
+            label="Ruta del nuevo proyecto",
+            hint_text="C:\\Users\\...\\deltarune-ch1",
+            width=400,
+        )
+
+        def _create() -> None:
+            raw = path_tf.value.strip()
+            if raw:
+                self._create_project(Path(raw))
+            dlg.open = False
+            self._page.update()
+
+        dlg = ft.AlertDialog(
+            title=ft.Text("Crear proyecto"),
+            content=path_tf,
+            actions=[
+                ft.TextButton("Cancelar", on_click=lambda e: setattr(dlg, 'open', False) or self._page.update()),
+                ft.ElevatedButton("Crear", on_click=lambda e: _create()),
+            ],
+        )
+        self._page.show_dialog(dlg)
 
     def _create_project(self, path: Path) -> None:
-        self._pending_create = False
         path.mkdir(parents=True, exist_ok=True)
         config = ProjectConfig(
             prompt=DEFAULT_PROMPT,
@@ -186,7 +225,7 @@ class WelcomeView(ft.Column):
 
         self.on_project_selected(project)
 
-    def _open_global_settings(self) -> None:
+    def _open_global_settings(self, e: ft.ControlEvent) -> None:
         from src.gui.views.settings_view import SettingsView
-        dialog = SettingsView(self.page, self.state, on_close=self._refresh)
-        self.page.open(dialog)
+        dlg = SettingsView(self._page, self.state)
+        self._page.show_dialog(dlg)

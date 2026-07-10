@@ -26,7 +26,7 @@ class SidebarConfig(ft.Column):
                 ft.dropdown.Option("gemini", "Gemini"),
                 ft.dropdown.Option("ollama", "Ollama"),
             ],
-            on_change=self._changed,
+            on_select=self._changed,
         )
 
         self.model_tf = ft.TextField(

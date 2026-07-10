@@ -1,21 +1,20 @@
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 from src.io.formats import AppConfig, Project
 
 
-@dataclass
 class LogEntry:
-    level: str
-    message: str
+    def __init__(self, level: str, message: str) -> None:
+        self.level = level
+        self.message = message
 
 
 class GUIState:
     def __init__(self, app_config: AppConfig) -> None:
         self.app_config = app_config
         self.project: Optional[Project] = None
-        self.log_entries: list[LogEntry] = field(default_factory=list)
+        self.log_entries: list[LogEntry] = []
 
     def add_log(self, level: str, message: str) -> None:
         self.log_entries.append(LogEntry(level=level, message=message))

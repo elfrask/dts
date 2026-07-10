@@ -92,8 +92,8 @@ def cmd_run(ctx: click.Context, chunk_size: int | None) -> None:
     use_translate(
         provider=provider,
         config=project.config,
-        input_path=str(project.input_file_path),
-        output_path=str(project.output_file_path),
+        input_path=project.input_file_path,
+        output_path=project.output_file_path,
     )
 
     click.echo(f"Translation saved to: {project.output_file_path}")

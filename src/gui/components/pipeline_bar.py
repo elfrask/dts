@@ -32,10 +32,10 @@ class PipelineBar(ft.Row):
 
         self.controls = [
             ft.ElevatedButton(
-                text=f"{emoji} {label}",
+                content=f"{emoji} {label}",
                 on_click=lambda e, a=action: self.on_action(a),
                 height=36,
-                style=ft.ButtonStyle(padding=ft.padding.all(8)),
+                style=ft.ButtonStyle(padding=ft.padding.Padding.all(8)),
             )
             for emoji, label, action in buttons
         ]
