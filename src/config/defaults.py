@@ -44,11 +44,12 @@ DEFAULT_PROMPT = (
     '}\n'
 )
 
-DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = "gemini-3.5-flash"
 
 DEFAULT_PROVIDER = "gemini"
 
-DEFAULT_OLLAMA_HOST = "http://localhost:11434"
+DEFAULT_OLLAMA_HOST = "http://localhost"
+DEFAULT_OLLAMA_PORT = 11434
 DEFAULT_OLLAMA_TIMEOUT = 120
 
 DEFAULT_SETTINGS_FILE = "settings.json"

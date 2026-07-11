@@ -15,6 +15,21 @@ class GUIState:
         self.app_config = app_config
         self.project: Optional[Project] = None
         self.log_entries: list[LogEntry] = []
+        self._listeners: list = []
+
+    def add_log(self, level: str, message: str) -> None:
+        self.log_entries.append(LogEntry(level=level, message=message))
+        for cb in self._listeners:
+            try:
+                cb(level, message)
+            except Exception:
+                pass
+
+    def clear_log(self) -> None:
+        self.log_entries.clear()
+
+    def on_log(self, callback) -> None:
+        self._listeners.append(callback)
 
     def add_log(self, level: str, message: str) -> None:
         self.log_entries.append(LogEntry(level=level, message=message))

@@ -1,33 +1,50 @@
-import flet as ft
+import tkinter as tk
+from tkinter import scrolledtext
 
-from src.gui.state import GUIState
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
 
-
-COLORS = {
-    "info": ft.Colors.BLUE_200,
-    "warning": ft.Colors.AMBER_200,
-    "error": ft.Colors.RED_200,
-    "success": ft.Colors.GREEN_200,
-    "debug": ft.Colors.GREY_400,
+LEVEL_TAGS = {
+    "info": ("blue",),
+    "warning": ("orange",),
+    "error": ("red",),
+    "success": ("green",),
 }
 
 
-class LogView(ft.Column):
-    def __init__(self, state: GUIState) -> None:
-        super().__init__()
-        self.state = state
-        self.spacing = 2
-        self.scroll = ft.ScrollMode.ALWAYS
-        self.auto_scroll = True
-        self.expand = True
-        self._controls_ref: list[ft.Text] = []
+class LogView(ttk.Frame):
+    def __init__(self, parent: ttk.Window) -> None:
+        super().__init__(parent)
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
 
-    def refresh(self) -> None:
-        self._controls_ref.clear()
-        for entry in self.state.log_entries:
-            color = COLORS.get(entry.level, ft.Colors.WHITE)
-            self._controls_ref.append(
-                ft.Text(entry.message, color=color, size=12, font_family="Consolas")
-            )
-        self.controls = self._controls_ref
-        self.update()
+        lbl = ttk.Label(self, text="Log", font=("Segoe UI", 11, "bold"))
+        lbl.grid(row=0, column=0, sticky="w", pady=(0, 3))
+
+        self.text = scrolledtext.ScrolledText(
+            self,
+            font=("Consolas", 10),
+            state=tk.DISABLED,
+            wrap=tk.WORD,
+            height=15,
+        )
+        self.text.grid(row=1, column=0, sticky="nsew")
+
+        self.text.tag_config("info", foreground="#5dade2")
+        self.text.tag_config("warning", foreground="#f39c12")
+        self.text.tag_config("error", foreground="#e74c3c")
+        self.text.tag_config("success", foreground="#2ecc71")
+        self.text.tag_config("bold", font=("Consolas", 10, "bold"))
+
+    def log(self, level: str, message: str) -> None:
+        self.text.config(state=tk.NORMAL)
+        tag = level if level in LEVEL_TAGS else "info"
+        self.text.insert(tk.END, f"[{level.upper()}] ", tag)
+        self.text.insert(tk.END, f"{message}\n", tag)
+        self.text.see(tk.END)
+        self.text.config(state=tk.DISABLED)
+
+    def clear(self) -> None:
+        self.text.config(state=tk.NORMAL)
+        self.text.delete("1.0", tk.END)
+        self.text.config(state=tk.DISABLED)

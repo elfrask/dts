@@ -28,7 +28,7 @@ from src.io.file_writer import (
     write_translation_dict,
     write_json,
 )
-from src.io.formats import ProjectConfig, AppConfig, Project, ProviderType
+from src.io.formats import ProjectConfig, AppConfig, Project, ProviderType, ProviderKeys
 from src.processors.matcher import (
     generate_input,
     apply_strings,
@@ -264,7 +264,8 @@ def cmd_settings(
         click.echo(f"Model:        {project.config.model}")
         click.echo(f"Chunk size:   {project.config.chunk_size}")
         click.echo(f"Project dir:  {project.directory}")
-        click.echo(f"API keys:     {len(app_config.api_keys)} configured")
+        gemini_keys = app_config.get_active_keys("gemini")
+        click.echo(f"API keys:     {len(gemini_keys)} configured")
         return
 
     changed = False
@@ -299,16 +300,22 @@ def cmd_config(
     app_config: AppConfig = ctx.obj["app_config"]
 
     if show:
-        click.echo(f"API keys:       {len(app_config.api_keys)} configured")
-        click.echo(f"Ollama host:    {app_config.ollama.host}")
+        for pname, pkeys in app_config.providers.items():
+            enabled = sum(1 for k in pkeys.keys if k.enabled)
+            total = len(pkeys.keys)
+            click.echo(f"{pname}: {enabled}/{total} keys active")
+        click.echo(f"Ollama host:    {app_config.ollama.host}:{app_config.ollama.port}")
         click.echo(f"Ollama timeout: {app_config.ollama.timeout}")
+        click.echo(f"UMT CLI:        {app_config.umt.cli_path or '(not set)'}")
         return
 
     changed = False
     if add_key:
-        app_config.api_keys.append(add_key)
+        gemini = app_config.providers.setdefault("gemini", ProviderKeys())
+        from src.io.formats import ApiKeyEntry
+        gemini.keys.append(ApiKeyEntry(name=f"key{len(gemini.keys)+1}", key=add_key, enabled=True))
         changed = True
-        click.echo(f"API key added ({len(app_config.api_keys)} total)")
+        click.echo(f"API key added ({len(gemini.keys)} total for gemini)")
     if ollama_host:
         app_config.ollama.host = ollama_host
         changed = True

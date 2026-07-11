@@ -20,15 +20,29 @@ class TranslationDict:
 
 
 @dataclass
-class UmtConfig:
-    cli_path: str = ""
-    auto_download: bool = False
+class ApiKeyEntry:
+    name: str = ""
+    key: str = ""
+    enabled: bool = True
+
+
+@dataclass
+class ProviderKeys:
+    """API keys per provider, not global."""
+    keys: list[ApiKeyEntry] = field(default_factory=list)
 
 
 @dataclass
 class OllamaConfig:
-    host: str = "http://localhost:11434"
+    host: str = "http://localhost"
+    port: int = 11434
     timeout: int = 120
+
+
+@dataclass
+class UmtConfig:
+    cli_path: str = ""
+    auto_download: bool = False
 
 
 @dataclass
@@ -36,23 +50,70 @@ class AppConfig:
     """Global application settings (stored in OS user config dir).
     Contains provider credentials and connection config, never project data.
     """
-    api_keys: list[str] = field(default_factory=list)
+    providers: dict[str, ProviderKeys] = field(default_factory=dict)
     ollama: OllamaConfig = field(default_factory=OllamaConfig)
+    umt: UmtConfig = field(default_factory=UmtConfig)
+
+    def get_active_keys(self, provider: str) -> list[str]:
+        """Return enabled key strings for a provider."""
+        p = self.providers.get(provider)
+        if not p:
+            return []
+        return [k.key for k in p.keys if k.enabled and k.key]
 
     def to_dict(self) -> dict:
         return {
-            "api_keys": self.api_keys,
+            "providers": {
+                name: {
+                    "keys": [
+                        {"name": k.name, "key": k.key, "enabled": k.enabled}
+                        for k in p.keys
+                    ]
+                }
+                for name, p in self.providers.items()
+            },
             "ollama_host": self.ollama.host,
+            "ollama_port": self.ollama.port,
             "ollama_timeout": self.ollama.timeout,
+            "umt_cli_path": self.umt.cli_path,
+            "umt_auto_download": self.umt.auto_download,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "AppConfig":
+        providers: dict[str, ProviderKeys] = {}
+        for name, pdata in data.get("providers", {}).items():
+            keys = [
+                ApiKeyEntry(
+                    name=k.get("name", ""),
+                    key=k.get("key", ""),
+                    enabled=k.get("enabled", True),
+                )
+                for k in pdata.get("keys", [])
+            ]
+            providers[name] = ProviderKeys(keys=keys)
+
+        # Backward compat: migrate flat api_keys to gemini provider
+        old_keys = data.get("api_keys")
+        if old_keys and "gemini" not in providers:
+            providers["gemini"] = ProviderKeys(
+                keys=[ApiKeyEntry(name=f"key{i+1}", key=k, enabled=True) for i, k in enumerate(old_keys)]
+            )
+
+        host_raw = data.get("ollama_host", "http://localhost")
+        # Strip port from old combined format (e.g. "http://localhost:11434")
+        if host_raw.count(":") == 2 and host_raw.rsplit(":", 1)[1].isdigit():
+            host_raw = host_raw.rsplit(":", 1)[0]
         return cls(
-            api_keys=data.get("api_keys", []),
+            providers=providers,
             ollama=OllamaConfig(
-                host=data.get("ollama_host", "http://localhost:11434"),
+                host=host_raw,
+                port=data.get("ollama_port", 11434),
                 timeout=data.get("ollama_timeout", 120),
+            ),
+            umt=UmtConfig(
+                cli_path=data.get("umt_cli_path", ""),
+                auto_download=data.get("umt_auto_download", False),
             ),
         )
 

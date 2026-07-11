@@ -90,10 +90,12 @@ class GeminiProvider(TranslationProvider):
 
     def get_models(self) -> list[str]:
         return [
+            "gemini-3.5-flash",
+            "gemini-3.1-pro-preview",
+            "gemini-3.1-flash-lite",
+            "gemini-3.0-deep-think",
+            "gemini-2.5-pro",
             "gemini-2.5-flash",
-            "gemini-2.0-flash",
-            "gemini-1.5-flash",
-            "gemini-1.5-pro",
         ]
 
     def translate_batch(
@@ -163,7 +165,7 @@ class OllamaProvider(TranslationProvider):
         import urllib.request
         import urllib.error
         try:
-            url = f"{self.ollama_config.host}/api/tags"
+            url = f"{self.ollama_config.host}:{self.ollama_config.port}/api/tags"
             urllib.request.urlopen(url, timeout=5)
             return True
         except (urllib.error.URLError, ConnectionError, TimeoutError):
@@ -173,7 +175,7 @@ class OllamaProvider(TranslationProvider):
         import urllib.request
         import urllib.error
         try:
-            url = f"{self.ollama_config.host}/api/tags"
+            url = f"{self.ollama_config.host}:{self.ollama_config.port}/api/tags"
             with urllib.request.urlopen(url, timeout=5) as resp:
                 data = json.loads(resp.read())
                 return [m["name"] for m in data.get("models", [])]
@@ -203,7 +205,7 @@ class OllamaProvider(TranslationProvider):
 
         for attempt in range(max_retries):
             try:
-                url = f"{self.ollama_config.host}/api/chat"
+                url = f"{self.ollama_config.host}:{self.ollama_config.port}/api/chat"
                 req = urllib.request.Request(
                     url,
                     data=payload,
@@ -240,7 +242,7 @@ class OllamaProvider(TranslationProvider):
 
 def create_provider(app_config: AppConfig, project_config: ProjectConfig) -> TranslationProvider:
     if project_config.provider == ProviderType.GEMINI:
-        return GeminiProvider(api_keys=app_config.api_keys)
+        return GeminiProvider(api_keys=app_config.get_active_keys("gemini"))
     elif project_config.provider == ProviderType.OLLAMA:
         return OllamaProvider(ollama_config=app_config.ollama)
     else:

@@ -10,6 +10,7 @@ from src.config.defaults import (
     DEFAULT_CHUNK_SIZE,
     DEFAULT_MODEL,
     DEFAULT_OLLAMA_HOST,
+    DEFAULT_OLLAMA_PORT,
     DEFAULT_OLLAMA_TIMEOUT,
 )
 from src.io.formats import ProjectConfig, AppConfig, OllamaConfig, Project
@@ -25,6 +26,7 @@ def load_app_settings(path: Optional[Path] = None) -> AppConfig:
         return AppConfig(
             ollama=OllamaConfig(
                 host=DEFAULT_OLLAMA_HOST,
+                port=DEFAULT_OLLAMA_PORT,
                 timeout=DEFAULT_OLLAMA_TIMEOUT,
             ),
         )
@@ -38,6 +40,7 @@ def load_app_settings(path: Optional[Path] = None) -> AppConfig:
         return AppConfig(
             ollama=OllamaConfig(
                 host=DEFAULT_OLLAMA_HOST,
+                port=DEFAULT_OLLAMA_PORT,
                 timeout=DEFAULT_OLLAMA_TIMEOUT,
             ),
         )
