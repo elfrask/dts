@@ -22,7 +22,7 @@ class ReviewTab(ttk.Frame):
         self._build()
 
     def _rebuild_data(self) -> None:
-        project = self.state.project
+        project = self.state.project #type: ignore
         if not project:
             self._originals = {}
             self._translated = {}
@@ -64,7 +64,7 @@ class ReviewTab(ttk.Frame):
         self._pending_keys = pending
 
     def _build(self) -> None:
-        project = self.state.project
+        project = self.state.project #type: ignore
         if not project:
             ttk.Label(self, text="No hay proyecto abierto").pack()
             return
@@ -155,14 +155,14 @@ class ReviewTab(ttk.Frame):
             elif key in self._manual:
                 tags.append("pending")
 
-            item_id = self._tree.insert("", END, values=(key, original, trans))
+            item_id = self._tree.insert("", "end", values=(key, original, trans))
             if tags:
                 self._tree.item(item_id, tags=tags)
 
     # ── Pull untranslated ───────────────────────────────────────
 
     def _pull_manual(self) -> None:
-        project = self.state.project
+        project = self.state.project #type: ignore
         if not project:
             return
         orig = TranslationDict(data=self._originals)
@@ -195,14 +195,14 @@ class ReviewTab(ttk.Frame):
 
         dialog = tk.Toplevel(self)
         dialog.title(f"Editar traducción — {key}")
-        dialog.geometry("650x300")
-        dialog.transient(self)
+        dialog.geometry("650x300") 
+        dialog.transient(self) #type: ignore
         dialog.grab_set()
         dialog.columnconfigure(0, weight=1)
         dialog.rowconfigure(1, weight=1)
 
         ttk.Label(dialog, text=f"Original: {original}", font=("Segoe UI", 10),
-                  bootstyle="secondary").grid(row=0, column=0, sticky="w", padx=10, pady=(10, 5))
+                  bootstyle="primary").grid(row=0, column=0, sticky="w", padx=10, pady=(10, 5))
 
         text = tk.Text(dialog, wrap="word", font=("Consolas", 10), height=10,
                        relief="flat", borderwidth=1,
@@ -218,7 +218,7 @@ class ReviewTab(ttk.Frame):
         def save():
             new_trans = text.get("1.0", "end-1c")
             self._tree.item(item, values=(key, original, new_trans))
-            project = self.state.project
+            project = self.state.project #type: ignore
             if project:
                 try:
                     manual = load_json(project.manual_file_path)
@@ -242,7 +242,7 @@ class ReviewTab(ttk.Frame):
     # ── Apply edits ─────────────────────────────────────────────
 
     def _apply_edits(self) -> None:
-        project = self.state.project
+        project = self.state.project #type: ignore
         if not project:
             return
         try:

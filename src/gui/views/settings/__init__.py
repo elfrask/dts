@@ -13,7 +13,7 @@ class SettingsDialog(tk.Toplevel):
         super().__init__(parent)
         self.state = state
         self.title("Configuración global")
-        self.geometry("700x500")
+        self.geometry("1200x800")
         self.minsize(650, 400)
         self.transient(parent)
         self.grab_set()
@@ -26,17 +26,17 @@ class SettingsDialog(tk.Toplevel):
         self._notebook = ttkb.Notebook(main)
         self._notebook.pack(fill=BOTH, expand=True)
 
-        self._provider_tab = ProviderTab(self._notebook, self._config)
+        self._provider_tab = ProviderTab(self._notebook, self._config) #type: ignore
         self._notebook.add(self._provider_tab, text="Proveedor de IA")
 
-        self._umt_tab = UmtTab(self._notebook, self._config)
+        self._umt_tab = UmtTab(self._notebook, self._config) #type: ignore
         self._notebook.add(self._umt_tab, text="Motor (UMT)")
 
         project_disable = False
         if not state.project:
             project_disable = True
 
-        self._project_tab = ProjectTab(self._notebook, state)
+        self._project_tab = ProjectTab(self._notebook, state) #type: ignore
         self._notebook.add(self._project_tab, text= ("Configuracion del Proyecto (no disponible)" if project_disable else "Configuracion del Proyecto"))
 
         if project_disable:

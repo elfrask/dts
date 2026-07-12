@@ -26,7 +26,7 @@ class ExportTab(ttk.Frame):
         self._build()
 
     def _build(self) -> None:
-        project = self.state.project
+        project = self.state.project #type: ignore
         if not project:
             ttk.Label(self, text="No hay proyecto abierto").pack()
             return
@@ -102,24 +102,24 @@ class ExportTab(ttk.Frame):
 
     def _resolve_translations(self) -> dict | None:
         """Return translations dict, or None if unavailable."""
-        project = self.state.project
+        project = self.state.project #type: ignore
         if not project:
             return None
         source = project.output_file_path
         if not source.exists():
             source = project.normalize_file_path
         if not source.exists():
-            self._status_label.configure(text="❌ No hay traducciones. Traduce primero.")
+            self._status_label.configure(text="No hay traducciones. Traduce primero.")
             return None
         return load_json(source)
 
     def _generate_strings_es(self, target: Path) -> bool:
         """Generate strings_es.json at target. Returns True on success."""
-        project = self.state.project
+        project = self.state.project #type: ignore
         if not project:
             return False
         if not project.strings_file_path.exists():
-            self._status_label.configure(text="❌ No se encuentra strings.json original")
+            self._status_label.configure(text="No se encuentra strings.json original")
             return False
         translations = self._resolve_translations()
         if translations is None:
@@ -134,7 +134,7 @@ class ExportTab(ttk.Frame):
     # ── Mode 1: strings_es.json ────────────────────────────────
 
     def _export_strings_es(self) -> None:
-        project = self.state.project
+        project = self.state.project #type: ignore
         if not project:
             return
         path = filedialog.asksaveasfilename(
@@ -147,12 +147,12 @@ class ExportTab(ttk.Frame):
             return
         if self._generate_strings_es(Path(path)):
             self._status_label.configure(
-                text=f"✅ strings_es.json guardado en:\n{path}")
+                text=f"strings_es.json guardado en:\n{path}")
 
     # ── Mode 2: data.win from original ─────────────────────────
 
     def _export_data_win(self) -> None:
-        project = self.state.project
+        project = self.state.project #type: ignore
         if not project:
             return
         app_cfg = load_app_settings()
@@ -189,17 +189,17 @@ class ExportTab(ttk.Frame):
             )
             self._cleanup_temp(str(strings_es))
             if success:
-                self._status_label.configure(text=f"✅ data.win exportado:\n{output}")
+                self._status_label.configure(text=f"data.win exportado:\n{output}")
                 messagebox.showinfo("Exportación completada", f"data.win traducido guardado en:\n{output}")
             else:
-                self._status_label.configure(text=f"❌ {msg}")
+                self._status_label.configure(text=f"{msg}")
 
         Thread(target=worker, daemon=True).start()
 
     # ── Mode 3: patch another data.win ─────────────────────────
 
     def _export_patch(self) -> None:
-        project = self.state.project
+        project = self.state.project #type: ignore
         if not project:
             return
         app_cfg = load_app_settings()
@@ -238,7 +238,7 @@ class ExportTab(ttk.Frame):
                 output_path=str(temp_strings),
             )
             if not success:
-                self._status_label.configure(text=f"❌ Error al extraer: {msg}")
+                self._status_label.configure(text=f"Error al extraer: {msg}")
                 self._cleanup_temp_dir(temp_dir)
                 return
 
@@ -256,7 +256,7 @@ class ExportTab(ttk.Frame):
                 result = apply_strings(strings, TranslationDict(data=tdict))
                 write_strings(temp_strings_es, result)
             except Exception as e:
-                self._status_label.configure(text=f"❌ Error al fusionar: {e}")
+                self._status_label.configure(text=f"Error al fusionar: {e}")
                 self._cleanup_temp_dir(temp_dir)
                 return
 
@@ -270,13 +270,13 @@ class ExportTab(ttk.Frame):
             )
             self._cleanup_temp_dir(temp_dir)
             if success:
-                self._status_label.configure(text=f"✅ Parche aplicado:\n{output}")
+                self._status_label.configure(text=f"Parche aplicado:\n{output}")
                 messagebox.showinfo(
                     "Parche completado",
                     f"Traducciones aplicadas al data.win.\nGuardado en:\n{output}",
                 )
             else:
-                self._status_label.configure(text=f"❌ {msg}")
+                self._status_label.configure(text=f"{msg}")
 
         Thread(target=worker, daemon=True).start()
 

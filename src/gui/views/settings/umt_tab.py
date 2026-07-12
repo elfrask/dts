@@ -28,7 +28,7 @@ class _DownloadProgressDialog:
 
         self._win = tk.Toplevel(parent)
         self._win.title("Descargando UMT CLI")
-        self._win.transient(parent)
+        self._win.transient(parent) #type: ignore
         self._win.grab_set()
         self._win.resizable(False, False)
 

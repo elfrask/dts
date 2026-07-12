@@ -836,7 +836,7 @@ def translate(data: dict):
         except Exception as e:
             print(f"error:", e)
             if not trys:
-                print("❌ Se agotaron los intentos para este bloque de diálogos.")
+                print("Se agotaron los intentos para este bloque de diálogos.")
                 break  # Fallaron todos los intentos: salimos del bucle
                 
             print(f"intento {trys}, reintentando la solicitud con otra API Key...")
@@ -848,9 +848,9 @@ def translate(data: dict):
     SwitchIndex += 1
 
     # 4. Validamos de forma segura si logramos obtener una respuesta
-    if response is not None and response.candidates and response.candidates[0].content.parts:
+    if response is not None and response.candidates and response.candidates[0].content.parts: #type: ignore
         # Usamos la extracción quirúrgica de la nueva SDK limpia de Markdown
-        texto_puro = response.candidates[0].content.parts[0].text
+        texto_puro: str = response.candidates[0].content.parts[0].text #type: ignore
         # texto_limpio = re.sub(r"```json\s*|```", "", texto_puro).strip()
         return newStr2Json(texto_puro)
     else:

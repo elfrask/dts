@@ -167,8 +167,8 @@ class WelcomeView(ttk.Frame):
     def _ask_project_name(self, parent: Path) -> None:
         dialog = tk.Toplevel(self)
         dialog.title("Crear proyecto")
-        dialog.geometry("400x150")
-        dialog.transient(self)
+        dialog.geometry("400x200")
+        dialog.transient(self) #type: ignore
         dialog.grab_set()
 
         ttk.Label(dialog, text="Nombre del proyecto:", font=("Segoe UI", 11)).pack(
@@ -193,8 +193,8 @@ class WelcomeView(ttk.Frame):
 
     def _open_project_at(self, path: Path) -> None:
         project = load_project(path)
-        self.state.project = project
-        self.state.clear_log()
+        self.state.project = project #type: ignore
+        self.state.clear_log() #type: ignore
         recent = _load_recent()
         pstr = str(path)
         if pstr in recent:
@@ -212,8 +212,8 @@ class WelcomeView(ttk.Frame):
         )
         project = Project(directory=path, config=config)
         save_project(project)
-        self.state.project = project
-        self.state.clear_log()
+        self.state.project = project #type: ignore
+        self.state.clear_log() #type: ignore
 
         strings_path = path / "strings.json"
         if strings_path.exists():

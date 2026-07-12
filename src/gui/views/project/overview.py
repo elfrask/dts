@@ -22,7 +22,7 @@ class OverviewTab(ttk.Frame):
         self._build()
 
     def _build(self) -> None:
-        project = self.state.project
+        project = self.state.project #type: ignore
         if not project:
             ttk.Label(self, text="No hay proyecto abierto").pack()
             return
@@ -150,10 +150,10 @@ class OverviewTab(ttk.Frame):
 
     def _open_umt_settings(self) -> None:
         from src.gui.views.settings import SettingsDialog
-        SettingsDialog(self.winfo_toplevel(), self.state, initial_tab=1)
+        SettingsDialog(self.winfo_toplevel(), self.state, initial_tab=1) #type: ignore
 
     def _process_data_win(self, data_win_path: str) -> None:
-        project = self.state.project
+        project = self.state.project #type: ignore
         if not project:
             return
 
@@ -187,7 +187,7 @@ class OverviewTab(ttk.Frame):
         self._rebuild()
 
     def _generate_input_after_extract(self) -> None:
-        project = self.state.project
+        project = self.state.project #type: ignore
         if not project:
             return
         try:
@@ -201,7 +201,7 @@ class OverviewTab(ttk.Frame):
 
     def _finish_extract(self, dialog_count: int) -> None:
         self._status_label.configure(
-            text=f"✅ Extracción completada. {dialog_count} diálogos listos para traducir.",
+            text=f"Extracción completada. {dialog_count} diálogos listos para traducir.",
             bootstyle="success",
         )
         messagebox.showinfo(
@@ -215,7 +215,7 @@ class OverviewTab(ttk.Frame):
     # ── Manual strings.json load ────────────────────────────────
 
     def _load_strings_manual(self) -> None:
-        project = self.state.project
+        project = self.state.project #type: ignore
         if not project:
             return
 
@@ -245,7 +245,7 @@ class OverviewTab(ttk.Frame):
 
     def _show_dialogs(self) -> None:
         from src.gui.views.project.dialogs_tab import view_dialogs_popup
-        view_dialogs_popup(self.winfo_toplevel(), self.state)
+        view_dialogs_popup(self.winfo_toplevel(), self.state) #type: ignore
 
     # ── Rebuild ─────────────────────────────────────────────────
 

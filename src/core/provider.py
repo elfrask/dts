@@ -134,10 +134,10 @@ class GeminiProvider(TranslationProvider):
                     config=_NO_THINKING_CONFIG,
                 )
 
-                if not response.candidates or not response.candidates[0].content.parts:
+                if not response.candidates or not response.candidates[0].content.parts: #type: ignore
                     raise RuntimeError("Empty response from Gemini")
 
-                text = response.candidates[0].content.parts[0].text
+                text: str = response.candidates[0].content.parts[0].text #type: ignore
                 parsed = _parse_json_response(str(text))
 
                 failed = [k for k in items if k not in parsed]
@@ -336,7 +336,7 @@ class AnthropicProvider(TranslationProvider):
         config: ProjectConfig,
         on_progress: Optional[Callable] = None,
     ) -> TranslationResult:
-        import anthropic
+        import anthropic 
 
         max_retries = 3
         last_error: Optional[str] = None
@@ -355,7 +355,7 @@ class AnthropicProvider(TranslationProvider):
                         {"role": "user", "content": payload},
                     ],
                 )
-                text = response.content[0].text if response.content else ""
+                text: str = response.content[0].text if response.content else "" #type: ignore
                 if not text:
                     raise RuntimeError("Empty response from Anthropic")
 

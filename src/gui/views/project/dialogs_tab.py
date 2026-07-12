@@ -25,7 +25,7 @@ def view_dialogs_popup(parent: ttkb.Window, state) -> None:
 
     win = tk.Toplevel(parent)
     win.title(f"Diálogos - {project.directory.name}")
-    win.geometry("900x550")
+    win.geometry("1200x800")
     win.transient(parent)
     win.grab_set()
 
@@ -59,7 +59,7 @@ def view_dialogs_popup(parent: ttkb.Window, state) -> None:
 
     for key, original in data.data.items():
         t = translated.get(key, "")
-        tree.insert("", END, values=(key, original, t))
+        tree.insert("", "end", values=(key, original, t))
 
     close_btn = ttkb.Button(main, text="Cerrar", command=win.destroy, bootstyle="secondary")
     close_btn.grid(row=2, column=0, pady=(10, 0))

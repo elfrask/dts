@@ -21,7 +21,7 @@ class ProjectView(ttk.Frame):
         self._build_content()
 
     def _build_top_bar(self) -> None:
-        project = self.state.project
+        project = self.state.project #type: ignore
         name = project.directory.name if project else "Sin proyecto"
 
         bar = ttk.Frame(self)
@@ -48,18 +48,18 @@ class ProjectView(ttk.Frame):
         self._notebook = ttk.Notebook(self)
         self._notebook.grid(row=2, column=0, sticky="nsew", padx=10, pady=10)
 
-        self._overview = OverviewTab(self._notebook, self.state)
+        self._overview = OverviewTab(self._notebook, self.state) #type: ignore
         self._notebook.add(self._overview, text="Resumen")
 
-        self._translate = TranslateTab(self._notebook, self.state)
+        self._translate = TranslateTab(self._notebook, self.state) #type: ignore
         self._notebook.add(self._translate, text="Traducir")
 
-        self._review = ReviewTab(self._notebook, self.state)
+        self._review = ReviewTab(self._notebook, self.state) #type: ignore
         self._notebook.add(self._review, text="Revisión")
 
-        self._export = ExportTab(self._notebook, self.state)
+        self._export = ExportTab(self._notebook, self.state) #type: ignore
         self._notebook.add(self._export, text="Exportar")
 
     def _open_settings(self) -> None:
         from src.gui.views.settings import SettingsDialog
-        SettingsDialog(self.winfo_toplevel(), self.state)
+        SettingsDialog(self.winfo_toplevel(), self.state) #type: ignore

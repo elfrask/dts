@@ -15,7 +15,7 @@ class DTSApp(ttk.Window):
     def __init__(self) -> None:
         super().__init__(themename="darkly")
         self.title("DTS v2 - Dialogue Translation System by Frask Coffee")
-        self.geometry("1100x700")
+        self.geometry("1200x800")
         self.minsize(900, 600)
 
         app_config = load_app_settings()
@@ -30,7 +30,7 @@ class DTSApp(ttk.Window):
     def _show_welcome(self) -> None:
         self._clear_view()
         self._current_view = WelcomeView(
-            self._main_container,
+            self._main_container, #type: ignore
             self.state,
             on_project_selected=self._on_project_selected,
             on_show_settings=self._show_settings,
@@ -41,7 +41,7 @@ class DTSApp(ttk.Window):
         from src.gui.views.project import ProjectView
         self._clear_view()
         self._current_view = ProjectView(
-            self._main_container,
+            self._main_container, #type: ignore
             self.state,
             on_back=self._show_welcome,
         )

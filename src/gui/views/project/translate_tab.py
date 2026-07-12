@@ -17,7 +17,7 @@ from src.io.formats import ProviderType
 class _GuiLogHandler(logging.Handler):
     """Sends Python logging messages to the translate tab's log widget."""
 
-    def __init__(self, log_callback: callable) -> None:
+    def __init__(self, log_callback: callable) -> None: #type: ignore
         super().__init__()
         self._callback = log_callback
 
@@ -36,13 +36,13 @@ class TranslateTab(ttk.Frame):
         self.state = state
         self._running = False
         self._cancel_event = threading.Event()
-        self._log_handler: logging.Handler = None
+        self._log_handler: logging.Handler = None #type: ignore
         self.columnconfigure(0, weight=1)
         self.rowconfigure(2, weight=1)
         self._build()
 
     def _build(self) -> None:
-        project = self.state.project
+        project = self.state.project #type: ignore
         if not project:
             ttk.Label(self, text="No hay proyecto abierto").pack()
             return
@@ -119,7 +119,7 @@ class TranslateTab(ttk.Frame):
         prompt_frame.rowconfigure(0, weight=1)
         self._bottom_notebook.add(prompt_frame, text="Prompt")
 
-        prompt_text = self.state.project.config.prompt or DEFAULT_PROMPT
+        prompt_text = self.state.project.config.prompt or DEFAULT_PROMPT #type: ignore
         self._prompt_text = tk.Text(
             prompt_frame, wrap="word", font=("Consolas", 10),
             height=12, relief="flat", borderwidth=1,
@@ -157,10 +157,14 @@ class TranslateTab(ttk.Frame):
         app_cfg = load_app_settings()
         available = []
         for pname, pkeys in app_cfg.providers.items():
-            if any(k.enabled and k.key for k in pkeys.keys):
+            if pname == "ollama":
+                if self._detect_ollama():
+                    available.append(pname)
+            elif any(k.enabled and k.key for k in pkeys.keys):
                 available.append(pname)
         if not available:
-            available = ["gemini", "ollama"]
+            available = ["gemini", "ollama" if self._detect_ollama() else None]
+            available = [p for p in available if p]
         self._provider_combo["values"] = available
         current = self._provider_var.get()
         if current not in available:
@@ -183,6 +187,16 @@ class TranslateTab(ttk.Frame):
             self._model_var.set(models[0] if models else "")
         self._save_config()
 
+    def _detect_ollama(self) -> bool:
+        app_cfg = load_app_settings()
+        try:
+            import urllib.request
+            url = f"{app_cfg.ollama.host}:{app_cfg.ollama.port}/api/tags"
+            urllib.request.urlopen(url, timeout=2)
+            return True
+        except Exception:
+            return False
+
     def _detect_ollama_models(self) -> list[str]:
         app_cfg = load_app_settings()
         try:
@@ -195,7 +209,7 @@ class TranslateTab(ttk.Frame):
             return []
 
     def _save_config(self, event=None) -> None:
-        project = self.state.project
+        project = self.state.project #type: ignore
         if not project:
             return
         project.config.provider = ProviderType(self._provider_var.get())
@@ -213,16 +227,16 @@ class TranslateTab(ttk.Frame):
 
     def _cancel(self) -> None:
         self._cancel_event.set()
-        self._log("⏹ Cancelando... (espera a que termine el lote actual)")
+        self._log("Cancelando... (espera a que termine el lote actual)")
         self._start_btn.configure(state=DISABLED, text="Cancelando...")
 
     def _start_translation(self) -> None:
-        project = self.state.project
+        project = self.state.project #type: ignore
         if not project:
             return
         if not project.input_file_path.exists():
-            self._log("❌ Ejecuta Extraer y generar input primero")
-            self._status_label.configure(text="❌ No hay input generado")
+            self._log("Ejecuta Extraer y generar input primero")
+            self._status_label.configure(text="No hay input generado")
             return
 
         self._save_config()
@@ -267,7 +281,7 @@ class TranslateTab(ttk.Frame):
                     is_cancelled=lambda: cancel_event.is_set(),
                 )
             except Exception as e:
-                self._finish(False, f"❌ Error: {e}")
+                self._finish(False, f"Error: {e}")
                 self._log(f"ERROR: {e}", error=True)
 
         threading.Thread(target=worker, daemon=True).start()
@@ -281,11 +295,11 @@ class TranslateTab(ttk.Frame):
         self._log(f"[{level}] {message}")
 
     def _on_error_event(self, message: str, **kw) -> None:
-        self._log(f"❌ {message}", error=True)
+        self._log(f"{message}", error=True)
 
     def _on_complete_event(self, result=None, **kw) -> None:
         msg = str(result) if result else "Traducción completada"
-        self._finish(True, f"✅ {msg}")
+        self._finish(True, f"{msg}")
 
     def _finish(self, success: bool, msg: str) -> None:
         self._running = False
@@ -298,7 +312,7 @@ class TranslateTab(ttk.Frame):
         # ── Remove the GUI log handler ──
         if self._log_handler:
             logging.getLogger().removeHandler(self._log_handler)
-            self._log_handler = None
+            self._log_handler = None #type: ignore
 
     def _log(self, msg: str, error: bool = False) -> None:
         def _insert():

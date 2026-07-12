@@ -74,8 +74,8 @@ def _run_umt_script(
         )
         stdout, stderr = proc.communicate(input=stdin_input, timeout=timeout)
     except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.communicate()
+        proc.kill() #type: ignore
+        proc.communicate() #type: ignore
         return False, "El proceso UMT tardó demasiado y fue terminado.", None
     except Exception as e:
         logger.exception("Error al ejecutar UMT")
