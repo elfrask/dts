@@ -150,7 +150,7 @@ def useTranslate(CHUNKS = 200, restart = False):
     
 
 
-    # # cliente = genai.configure(api_key= "AIzaSyAijT-YJxmyCDP9PSAM4jDlGeiR_O0AIVA")
+    # # cliente = genai.configure(api_key= "")
     
     # INDEX = 0
 
