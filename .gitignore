@@ -2,3 +2,11 @@ AGENTS.md
 example
 opencode.jsonc
 **/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/__dts_export_temp*
+dist/
+build/
+*.egg-info/
+.DS_Store
+Thumbs.db
