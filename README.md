@@ -2,6 +2,8 @@
 
 Traductor de diálogos de videojuegos (GameMaker) del inglés al español usando APIs de IA.
 
+![Captura 1 de la app](screenshots/1.png)
+
 ## Documentación
 
 La documentación completa está en el directorio [`docs/`](docs/):
