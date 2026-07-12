@@ -1,6 +1,6 @@
 # DTS v2 — Dialogue Translation System
 
-![logo](assets/1024.png)
+![logo](assets/512.png)
 
 Traductor de diálogos de videojuegos (GameMaker) del inglés al español usando APIs de IA.
 
