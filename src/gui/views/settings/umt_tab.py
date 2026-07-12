@@ -1,3 +1,4 @@
+import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, filedialog
@@ -16,6 +17,96 @@ from src.processors.umt_extractor import (
     EXPORT_SCRIPT_REL,
     IMPORT_SCRIPT_REL,
 )
+
+
+class _DownloadProgressDialog:
+    """Modal progress dialog for UMT download."""
+
+    def __init__(self, parent: tk.Widget, asset_name: str) -> None:
+        self._parent = parent
+        self._cancelled = False
+
+        self._win = tk.Toplevel(parent)
+        self._win.title("Descargando UMT CLI")
+        self._win.transient(parent)
+        self._win.grab_set()
+        self._win.resizable(False, False)
+
+        # Center on parent
+        self._win.update_idletasks()
+        pw, ph = parent.winfo_width(), parent.winfo_height()
+        px, py = parent.winfo_rootx(), parent.winfo_rooty()
+        w, h = 480, 200
+        self._win.geometry(f"{w}x{h}+{px + (pw - w) // 2}+{py + (ph - h) // 2}")
+
+        frame = ttkb.Frame(self._win, padding=20)
+        frame.pack(fill=BOTH, expand=True)
+
+        ttkb.Label(frame, text="Descargando UMT CLI",
+                   font=("Segoe UI", 13, "bold")).pack(anchor="w")
+
+        self._file_label = ttkb.Label(frame, text=asset_name,
+                                      font=("Segoe UI", 10))
+        self._file_label.pack(anchor="w", pady=(8, 4))
+
+        self._progress = ttkb.Progressbar(frame, length=440, mode="determinate", value=0)
+        self._progress.pack(fill=X, pady=(0, 4))
+
+        self._size_label = ttkb.Label(frame, text="Iniciando...",
+                                      font=("Segoe UI", 9), bootstyle="secondary")
+        self._size_label.pack(anchor="w")
+
+        self._status_label = ttkb.Label(frame, text="",
+                                        font=("Segoe UI", 9), bootstyle="secondary")
+        self._status_label.pack(anchor="w", pady=(4, 0))
+
+        self._close_btn = ttkb.Button(frame, text="Cerrar", state=DISABLED,
+                                      command=self._win.destroy, width=12)
+        self._close_btn.pack(anchor="e", pady=(12, 0))
+
+        self._win.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _on_close(self) -> None:
+        if self._close_btn.cget("state") == "disabled":
+            return
+        self._win.destroy()
+
+    def _schedule(self, fn, *args) -> None:
+        self._win.after_idle(fn, *args)
+
+    def update_progress(self, downloaded: int, total: int) -> None:
+        def _do():
+            if total:
+                pct = int(downloaded / total * 100)
+                self._progress.configure(value=pct)
+                self._size_label.configure(
+                    text=f"{downloaded // 1024} KB / {total // 1024} KB")
+            else:
+                self._size_label.configure(text=f"{downloaded // 1024} KB descargados")
+        self._win.after_idle(_do)
+
+    def set_status(self, text: str, error: bool = False) -> None:
+        def _do():
+            self._status_label.configure(
+                text=text,
+                bootstyle="danger" if error else "info",
+            )
+        self._win.after_idle(_do)
+
+    def set_complete(self, success: bool, msg: str) -> None:
+        def _do():
+            if success:
+                self._size_label.configure(text="✓ " + msg, bootstyle="success")
+            else:
+                self._size_label.configure(text="✗ " + msg, bootstyle="danger")
+            self._close_btn.configure(state=NORMAL, text="Cerrar")
+        self._win.after_idle(_do)
+
+    def close(self) -> None:
+        self._win.after_idle(self._win.destroy)
+
+    def is_cancelled(self) -> bool:
+        return self._cancelled
 
 
 class UmtTab(ttkb.Frame):
@@ -156,10 +247,9 @@ class UmtTab(ttkb.Frame):
     # ── Download ───────────────────────────────────────────────
 
     def _download(self) -> None:
-        import platform, urllib.request, zipfile, io, threading
-
-        self._dl_btn.configure(state=DISABLED, text="Descargando...")
-        self._dl_status.configure(text="Iniciando descarga...", bootstyle="info")
+        import platform
+        import urllib.request
+        import zipfile
 
         system = platform.system().lower()
 
@@ -171,30 +261,51 @@ class UmtTab(ttkb.Frame):
         asset_name = asset_map.get(system)
         if not asset_name:
             self._dl_status.configure(text=f"Plataforma no soportada: {system}", bootstyle="danger")
-            self._dl_btn.configure(state=NORMAL, text="Descargar UMT CLI")
             return
 
         url = (f"https://github.com/UnderminersTeam/UndertaleModTool/releases/"
                f"download/0.9.1.1/{asset_name}")
 
+        # Determine target directory
+        extract_dir = Path(self._config.umt.directory or "")
+        if not extract_dir or not extract_dir.is_absolute():
+            extract_dir = Path.home() / ".dts" / "umt"
+
+        # Disable the download button
+        self._dl_btn.configure(state=DISABLED, text="Descargando...")
+
+        # Create the progress dialog
+        dialog = _DownloadProgressDialog(self, asset_name)
+
+        def reporthook(block_count: int, block_size: int, total_size: int) -> None:
+            downloaded = block_count * block_size
+            if total_size > 0:
+                downloaded = min(downloaded, total_size)
+            dialog.update_progress(downloaded, total_size)
+
         def task():
             try:
-                self._dl_status.configure(text=f"Descargando {asset_name}...", bootstyle="info")
-                resp = urllib.request.urlopen(url, timeout=60)
-                data = resp.read()
-
-                extract_dir = Path(self._config.umt.directory or Path.cwd())
-                if not extract_dir.exists() or not extract_dir.is_absolute():
-                    extract_dir = Path.home() / ".dts" / "umt"
                 extract_dir.mkdir(parents=True, exist_ok=True)
+                tmp = extract_dir / asset_name
 
-                with zipfile.ZipFile(io.BytesIO(data)) as z:
+                dialog.set_status(f"Descargando {asset_name}...")
+                urllib.request.urlretrieve(url, str(tmp), reporthook)
+
+                dialog.set_status("Extrayendo archivos...")
+                with zipfile.ZipFile(str(tmp)) as z:
                     z.extractall(path=str(extract_dir))
+                tmp.unlink(missing_ok=True)
 
                 self._dir_var.set(str(extract_dir))
-                self._dl_status.configure(text=f"✓ Descargado y extraído en: {extract_dir}", bootstyle="success")
+                self._dl_status.configure(
+                    text=f"✓ Descargado y extraído en: {extract_dir}",
+                    bootstyle="success",
+                )
+                dialog.set_complete(True, f"Extraído en: {extract_dir}")
+
             except Exception as e:
-                self._dl_status.configure(text=f"Error en descarga: {e}", bootstyle="danger")
+                self._dl_status.configure(text=f"Error: {e}", bootstyle="danger")
+                dialog.set_complete(False, str(e))
             finally:
                 self._dl_btn.configure(state=NORMAL, text="Descargar UMT CLI")
 
