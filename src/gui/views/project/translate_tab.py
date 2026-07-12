@@ -6,26 +6,11 @@ import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 
 from src.config.settings import load_app_settings, save_project
-from src.config.defaults import DEFAULT_PROMPT
+from src.config.defaults import DEFAULT_PROMPT, PROVIDER_MODELS
 from src.core.provider import create_provider
 from src.core.translator import use_translate
 from src.core.events import EventBus, Signal
 from src.io.formats import ProviderType
-
-GEMINI_MODELS = [
-    "gemini-3.5-flash",
-    "gemini-3.1-pro-preview",
-    "gemini-3.1-flash-lite",
-    "gemini-3.0-deep-think",
-    "gemini-2.5-pro",
-    "gemini-2.5-flash",
-]
-
-OLLAMA_DEFAULT_MODELS = [
-    "llama3", "llama3.1", "llama3.2",
-    "qwen2.5", "mistral", "mixtral",
-    "gemma2", "codellama",
-]
 
 # ── Logging handler that forwards to the GUI ────────────────────
 
@@ -189,9 +174,9 @@ class TranslateTab(ttk.Frame):
     def _populate_models(self) -> None:
         provider = self._provider_var.get()
         if provider == "ollama":
-            models = self._detect_ollama_models() or OLLAMA_DEFAULT_MODELS
+            models = self._detect_ollama_models() or PROVIDER_MODELS.get("ollama", [])
         else:
-            models = GEMINI_MODELS[:]
+            models = PROVIDER_MODELS.get(provider, [])
         self._model_combo["values"] = models
         current = self._model_var.get()
         if current not in models:
