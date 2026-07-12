@@ -1,10 +1,17 @@
 # DTS v2 — Dialogue Translation System
 
+![logo](assets/icon.png)
+
 Traductor de diálogos de videojuegos (GameMaker) del inglés al español usando APIs de IA.
 
-![Captura 1 de la app](screenshots/1.png)
+## ¿Que es?
+
+DTS es una herramienta automatizada de código abierto diseñada para la traducción masiva de diálogos y textos en videojuegos basados en el motor de Toby Fox (Undertale y Deltarune). Mediante la integración en segundo plano del CLI de UndertaleModTool (UMT) y el poder de múltiples modelos de Inteligencia Artificial de última generación, DTS permite extraer, traducir e inyectar de vuelta los strings en el archivo data.win de forma 100% autónoma, rápida y sin necesidad de interactuar manualmente con líneas de comandos complejas.
+
 
 ## Documentación
+
+![Captura 1 de la app](screenshots/1.png)
 
 La documentación completa está en el directorio [`docs/`](docs/):
 
