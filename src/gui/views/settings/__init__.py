@@ -9,7 +9,7 @@ from src.gui.views.settings.project_tab import ProjectTab
 
 
 class SettingsDialog(tk.Toplevel):
-    def __init__(self, parent: ttkb.Window, state) -> None:
+    def __init__(self, parent: ttkb.Window, state, initial_tab: int = 0) -> None:
         super().__init__(parent)
         self.state = state
         self.title("Configuración global")
@@ -41,6 +41,9 @@ class SettingsDialog(tk.Toplevel):
 
         if project_disable:
             self._notebook.tab(2, state="disabled")
+
+        if 0 <= initial_tab < len(self._notebook.tabs()):
+            self._notebook.select(initial_tab)
 
         btn_frame = ttkb.Frame(main)
         btn_frame.pack(fill=X, pady=(10, 0))

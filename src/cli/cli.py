@@ -306,7 +306,7 @@ def cmd_config(
             click.echo(f"{pname}: {enabled}/{total} keys active")
         click.echo(f"Ollama host:    {app_config.ollama.host}:{app_config.ollama.port}")
         click.echo(f"Ollama timeout: {app_config.ollama.timeout}")
-        click.echo(f"UMT CLI:        {app_config.umt.cli_path or '(not set)'}")
+        click.echo(f"UMT directorio:  {app_config.umt.directory or '(not set)'}")
         return
 
     changed = False

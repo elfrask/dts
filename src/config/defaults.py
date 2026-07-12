@@ -9,7 +9,7 @@ DEFAULT_PATHS = {
     "route_strings_result_file": "strings_es.json",
     "route_normalize_file": "lang_es_normalize.json",
     "route_manual_file": "lang_manual_edit.json",
-    "umt_cli_path": "",
+    "umt_directory": "",
 }
 
 DEFAULT_CHUNK_SIZE = 200
@@ -37,6 +37,7 @@ DEFAULT_PROMPT = (
     "minúscula déjalo tal cual y si trae '_' con mas razón déjalo igual. "
     "Los textos de las traducciones no pueden ser mas grandes que el original, para evitar "
     "desbordamiento se recomiendo que sea igual de largo o mas corto que el original. "
+    "evita por completo usar el modo de pensamiento, para esta tarea no la usaras, si puedes no usarla mejor, eso evita consumir mucho tiempo en procesar la solicitud"
     "Devolverás los json exactamente con este formato para ser parseado:\n\n"
     '{\n'
     '    "[Nombre de la clave tal cual como esta]": "[Contenido de la clave ya traducido]",\n'
@@ -57,3 +58,65 @@ DEFAULT_SETTINGS_FILE = "settings.json"
 DEFAULT_UMT_DOWNLOAD_URL = (
     "https://github.com/UnderminersTeam/UndertaleModTool/releases/download/0.9.1.1/UTMT_CLI_v0.9.1.1-Windows.zip"
 )
+
+# ── Provider model lists ──────────────────────────────────────────
+
+GEMINI_MODELS = [
+    "gemini-3.5-flash",
+    "gemini-3.1-pro-preview",
+    "gemini-3.1-flash-lite",
+    "gemini-3.0-deep-think",
+    "gemini-2.5-pro",
+    "gemini-2.5-flash",
+]
+
+OLLAMA_DEFAULT_MODELS = [
+    "llama3", "llama3.1", "llama3.2",
+    "qwen2.5", "mistral", "mixtral",
+    "gemma2", "codellama",
+]
+
+GROQ_MODELS = [
+    "openai/gpt-oss-20b",
+    "openai/gpt-oss-120b",
+    "qwen/qwen3.6-27b",
+]
+
+DEEPINFRA_MODELS = [
+    "deepseek-ai/DeepSeek-V4-Flash",
+    "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+    "Qwen/Qwen2.5-72B-Instruct",
+]
+
+TOGETHER_MODELS = [
+    "together/Qwen3.7-Plus",
+    "together/Llama-3-8B-Instruct-Lite",
+]
+
+ANTHROPIC_MODELS = [
+    "claude-3-5-sonnet-20241022",
+    "claude-3-5-haiku-20241022",
+]
+
+OPENAI_MODELS = [
+    "gpt-4o-mini",
+    "gpt-4o",
+]
+
+# Map provider string -> model list
+PROVIDER_MODELS: dict[str, list[str]] = {
+    "gemini": GEMINI_MODELS,
+    "ollama": OLLAMA_DEFAULT_MODELS,
+    "groq": GROQ_MODELS,
+    "deepinfra": DEEPINFRA_MODELS,
+    "together": TOGETHER_MODELS,
+    "anthropic": ANTHROPIC_MODELS,
+    "openai": OPENAI_MODELS,
+}
+
+# OpenAI-compatible base URLs
+OPENAI_COMPATIBLE_BASE_URLS: dict[str, str] = {
+    "groq": "https://api.groq.com/openai/v1",
+    "deepinfra": "https://api.deepinfra.com/v1/openai",
+    "together": "https://api.together.xyz/v1",
+}

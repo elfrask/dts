@@ -38,7 +38,7 @@ class DTSApp(ttk.Window):
         self._current_view.pack(fill=BOTH, expand=True)
 
     def _on_project_selected(self, project) -> None:
-        from src.gui.views.project_view import ProjectView
+        from src.gui.views.project import ProjectView
         self._clear_view()
         self._current_view = ProjectView(
             self._main_container,
@@ -47,9 +47,9 @@ class DTSApp(ttk.Window):
         )
         self._current_view.pack(fill=BOTH, expand=True)
 
-    def _show_settings(self) -> None:
+    def _show_settings(self, initial_tab: int = 0) -> None:
         from src.gui.views.settings import SettingsDialog
-        SettingsDialog(self, self.state)
+        SettingsDialog(self, self.state, initial_tab=initial_tab)
 
     def _clear_view(self) -> None:
         if self._current_view:

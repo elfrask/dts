@@ -2,7 +2,7 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Callable
 
 from src.io.formats import ProjectConfig, TranslationProgress
 from src.io.file_loader import load_json, ensure_json
@@ -20,6 +20,7 @@ def use_translate(
     output_path: Path,
     event_bus: Optional[EventBus] = None,
     restart: bool = False,
+    is_cancelled: Optional[Callable[[], bool]] = None,
 ) -> None:
     input_data = load_json(input_path)
     ensure_json(output_path)
@@ -45,6 +46,13 @@ def use_translate(
     chunk_size = config.chunk_size
 
     while index < total:
+        if is_cancelled and is_cancelled():
+            msg = f"Translation cancelled by user at {index}/{total}"
+            logger.info(msg)
+            if event_bus:
+                event_bus.emit_log("info", msg)
+            break
+
         if event_bus:
             event_bus.emit_progress(done_count, total + done_count)
 
@@ -89,11 +97,13 @@ def use_translate(
 
         index += len(chunk_keys)
 
-        if index < total:
-            logger.info("Waiting 7s before next chunk (%d/%d)", index, total)
-            time.sleep(7)
+        if index < total and not (is_cancelled and is_cancelled()):
+            if config.provider.value != "ollama":
+                logger.info("Waiting 7s before next chunk (%d/%d)", index, total)
+                time.sleep(7)
 
-    msg = f"Translation complete: {done_count}/{done_count} dialogs"
-    logger.info(msg)
+    cancelled = is_cancelled and is_cancelled()
+    final_msg = f"{'Cancelled' if cancelled else 'Translation complete'}: {done_count}/{done_count} dialogs"
+    logger.info(final_msg)
     if event_bus:
-        event_bus.emit_complete(msg)
+        event_bus.emit_complete(final_msg)

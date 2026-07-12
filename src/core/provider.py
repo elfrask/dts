@@ -6,6 +6,8 @@ from abc import ABC, abstractmethod
 from typing import Optional, Callable
 
 import google.genai as genai
+from google.genai import types
+import ollama
 
 from src.io.formats import (
     ProjectConfig,
@@ -14,9 +16,15 @@ from src.io.formats import (
     ProviderType,
     OllamaConfig,
 )
+from src.config.defaults import OPENAI_COMPATIBLE_BASE_URLS
 from src.core.api_manager import ApiKeyManager
 
 logger = logging.getLogger(__name__)
+
+# Shared config that disables thinking for all Gemini models
+_NO_THINKING_CONFIG = types.GenerateContentConfig(
+    thinking_config=types.ThinkingConfig(include_thoughts=False),
+)
 
 
 class TranslationProvider(ABC):
@@ -119,9 +127,12 @@ class GeminiProvider(TranslationProvider):
 
             try:
                 client = genai.Client(api_key=key)
-                chat = client.chats.create(model=config.model)
                 payload = f"{prompt}\n{json.dumps(items, indent=4)}"
-                response = chat.send_message(payload)
+                response = client.models.generate_content(
+                    model=config.model,
+                    contents=payload,
+                    config=_NO_THINKING_CONFIG,
+                )
 
                 if not response.candidates or not response.candidates[0].content.parts:
                     raise RuntimeError("Empty response from Gemini")
@@ -156,30 +167,24 @@ class GeminiProvider(TranslationProvider):
 class OllamaProvider(TranslationProvider):
     def __init__(self, ollama_config: OllamaConfig):
         self.ollama_config = ollama_config
+        self._client = ollama.Client(host=f"{ollama_config.host}:{ollama_config.port}")
 
     @property
     def name(self) -> str:
         return "ollama"
 
     def is_available(self) -> bool:
-        import urllib.request
-        import urllib.error
         try:
-            url = f"{self.ollama_config.host}:{self.ollama_config.port}/api/tags"
-            urllib.request.urlopen(url, timeout=5)
+            self._client.list()
             return True
-        except (urllib.error.URLError, ConnectionError, TimeoutError):
+        except Exception:
             return False
 
     def get_models(self) -> list[str]:
-        import urllib.request
-        import urllib.error
         try:
-            url = f"{self.ollama_config.host}:{self.ollama_config.port}/api/tags"
-            with urllib.request.urlopen(url, timeout=5) as resp:
-                data = json.loads(resp.read())
-                return [m["name"] for m in data.get("models", [])]
-        except (urllib.error.URLError, json.JSONDecodeError, TimeoutError):
+            resp = self._client.list()
+            return [m.model for m in resp.models]  # type: ignore
+        except Exception:
             return []
 
     def translate_batch(
@@ -189,33 +194,25 @@ class OllamaProvider(TranslationProvider):
         config: ProjectConfig,
         on_progress: Optional[Callable] = None,
     ) -> TranslationResult:
-        import urllib.request
-        import urllib.error
-
-        payload = json.dumps({
-            "model": config.model,
-            "messages": [
-                {"role": "user", "content": f"{prompt}\n{json.dumps(items, indent=4)}"},
-            ],
-            "stream": False,
-        }).encode("utf-8")
-
         max_retries = 3
         last_error: Optional[str] = None
 
         for attempt in range(max_retries):
             try:
-                url = f"{self.ollama_config.host}:{self.ollama_config.port}/api/chat"
-                req = urllib.request.Request(
-                    url,
-                    data=payload,
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
+                resp = self._client.chat(
+                    model=config.model,
+                    messages=[
+                        {
+                            "role": "user",
+                            # "content": f"{prompt}\n{json.dumps(items, indent=4)}",
+                            "content": f"Responde EXCLUSIVAMENTE con el objeto JSON solicitado sin notas ni análisis previos.\n{prompt}\n{json.dumps(items, indent=4)}",
+                        },
+                    ],
+                    stream=False,
+                    think=False,
+                    format="json"
                 )
-                with urllib.request.urlopen(req, timeout=self.ollama_config.timeout) as resp:
-                    body = json.loads(resp.read().decode("utf-8"))
-
-                text = body.get("message", {}).get("content", "")
+                text = resp.message.content or ""
                 if not text:
                     raise RuntimeError("Empty response from Ollama")
 

@@ -7,6 +7,11 @@ from typing import Optional
 class ProviderType(str, Enum):
     GEMINI = "gemini"
     OLLAMA = "ollama"
+    GROQ = "groq"
+    DEEPINFRA = "deepinfra"
+    TOGETHER = "together"
+    ANTHROPIC = "anthropic"
+    OPENAI = "openai"
 
 
 @dataclass
@@ -41,7 +46,7 @@ class OllamaConfig:
 
 @dataclass
 class UmtConfig:
-    cli_path: str = ""
+    directory: str = ""
     auto_download: bool = False
 
 
@@ -75,7 +80,7 @@ class AppConfig:
             "ollama_host": self.ollama.host,
             "ollama_port": self.ollama.port,
             "ollama_timeout": self.ollama.timeout,
-            "umt_cli_path": self.umt.cli_path,
+            "umt_directory": self.umt.directory,
             "umt_auto_download": self.umt.auto_download,
         }
 
@@ -104,6 +109,12 @@ class AppConfig:
         # Strip port from old combined format (e.g. "http://localhost:11434")
         if host_raw.count(":") == 2 and host_raw.rsplit(":", 1)[1].isdigit():
             host_raw = host_raw.rsplit(":", 1)[0]
+
+        # Backward compat: migra "umt_cli_path" (exe) a "umt_directory" (carpeta)
+        raw_dir = data.get("umt_directory") or data.get("umt_cli_path", "")
+        if raw_dir and Path(raw_dir).is_file():
+            raw_dir = str(Path(raw_dir).parent)
+
         return cls(
             providers=providers,
             ollama=OllamaConfig(
@@ -112,7 +123,7 @@ class AppConfig:
                 timeout=data.get("ollama_timeout", 120),
             ),
             umt=UmtConfig(
-                cli_path=data.get("umt_cli_path", ""),
+                directory=raw_dir,
                 auto_download=data.get("umt_auto_download", False),
             ),
         )
@@ -121,6 +132,7 @@ class AppConfig:
 @dataclass
 class ProjectConfig:
     route_strings_file: str = "strings.json"
+    route_data_win: str = ""
     route_input_file: str = "lang_input.json"
     route_output_file: str = "lang_es_out.json"
     route_normalize_file: str = "lang_es_normalize.json"
@@ -137,6 +149,7 @@ class ProjectConfig:
     def to_dict(self) -> dict:
         return {
             "route_strings_file": self.route_strings_file,
+            "route_data_win": self.route_data_win,
             "route_input_file": self.route_input_file,
             "route_output_file": self.route_output_file,
             "route_strings_result_file": self.route_strings_result_file,
@@ -146,13 +159,17 @@ class ProjectConfig:
             "provider": self.provider.value,
             "prompt": self.prompt,
             "model": self.model,
-            "umt_cli_path": self.umt.cli_path,
+            "umt_directory": self.umt.directory,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "ProjectConfig":
+        raw_dir = data.get("umt_directory") or data.get("umt_cli_path", "")
+        if raw_dir and Path(raw_dir).is_file():
+            raw_dir = str(Path(raw_dir).parent)
         return cls(
             route_strings_file=data.get("route_strings_file", "strings.json"),
+            route_data_win=data.get("route_data_win", ""),
             route_input_file=data.get("route_input_file", "lang_input.json"),
             route_output_file=data.get("route_output_file", "lang_es_out.json"),
             route_strings_result_file=data.get("route_strings_result_file", "strings_es.json"),
@@ -162,7 +179,7 @@ class ProjectConfig:
             provider=ProviderType(data.get("provider", "gemini")),
             prompt=data.get("prompt", ""),
             model=data.get("model", "gemini-2.5-flash"),
-            umt=UmtConfig(cli_path=data.get("umt_cli_path", "")),
+            umt=UmtConfig(directory=raw_dir),
         )
 
 
@@ -182,6 +199,10 @@ class Project:
     @property
     def strings_file_path(self) -> Path:
         return self.resolve_path(self.config.route_strings_file)
+
+    @property
+    def data_win_file_path(self) -> Path:
+        return self.resolve_path(self.config.route_data_win)
 
     @property
     def input_file_path(self) -> Path:

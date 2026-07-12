@@ -6,6 +6,16 @@ import ttkbootstrap as ttkb
 from ttkbootstrap.constants import *
 
 from src.io.formats import AppConfig, UmtConfig
+from src.processors.umt_extractor import (
+    is_umt_configured,
+    umt_status,
+    verify_umt,
+    _find_cli,
+    _find_export_script,
+    _find_import_script,
+    EXPORT_SCRIPT_REL,
+    IMPORT_SCRIPT_REL,
+)
 
 
 class UmtTab(ttkb.Frame):
@@ -25,23 +35,26 @@ class UmtTab(ttkb.Frame):
 
         self._status_label = ttkb.Label(status_frame, text="", font=("Segoe UI", 10))
         self._status_label.pack(anchor="w")
+        self._cli_status = ttkb.Label(status_frame, text="", font=("Segoe UI", 10))
+        self._cli_status.pack(anchor="w")
+        self._script_status = ttkb.Label(status_frame, text="", font=("Segoe UI", 10))
+        self._script_status.pack(anchor="w")
 
         # ── Manual ──
         path_frame = ttkb.Labelframe(self, text="Método manual", padding=10)
         path_frame.pack(fill=X, pady=(0, 15))
 
-        ttkb.Label(path_frame, text="Si ya tienes UndertaleModTool CLI descargado, selecciona el ejecutable:",
+        ttkb.Label(path_frame, text="Selecciona la carpeta donde está instalado UMT:",
                    font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 8))
 
         entry_row = ttkb.Frame(path_frame)
         entry_row.pack(fill=X)
 
-        self._path_var = tk.StringVar(value=config.umt.cli_path)
-        self._path_var.trace_add("write", lambda *_: self._update_status())
+        self._dir_var = tk.StringVar(value=config.umt.directory)
+        self._dir_var.trace_add("write", lambda *_: self._update_status())
         self._update_status()
 
-
-        ttkb.Entry(entry_row, textvariable=self._path_var, width=55).pack(
+        ttkb.Entry(entry_row, textvariable=self._dir_var, width=55).pack(
             side=LEFT, padx=(0, 6))
         ttkb.Button(entry_row, text="Examinar...", command=self._browse,
                     bootstyle="secondary", width=12).pack(side=LEFT, padx=(0, 6))
@@ -70,50 +83,75 @@ class UmtTab(ttkb.Frame):
     # ── Status ─────────────────────────────────────────────────
 
     def _update_status(self) -> None:
-        path = self._path_var.get().strip()
-        if not path:
-            self._status_label.configure(
-                text="⚠ No hay ruta configurada. Usa la descarga automática o selecciona el ejecutable manualmente.",
-                bootstyle="warning")
-        elif not Path(path).exists():
-            self._status_label.configure(text=f"✗ La ruta no existe: {path}", bootstyle="danger")
-        else:
-            self._status_label.configure(text=f"✓ Ruta configurada: {path}", bootstyle="success")
+        directory = self._dir_var.get().strip()
+        if not directory:
+            self._status_label.configure(text="⚠ No hay carpeta configurada.", bootstyle="warning")
+            self._cli_status.configure(text="")
+            self._script_status.configure(text="")
+            return
+
+        d = Path(directory)
+        if not d.exists():
+            self._status_label.configure(text=f"✗ La carpeta no existe: {directory}", bootstyle="danger")
+            self._cli_status.configure(text="")
+            self._script_status.configure(text="")
+            return
+        if not d.is_dir():
+            self._status_label.configure(text="✗ La ruta no es una carpeta", bootstyle="danger")
+            self._cli_status.configure(text="")
+            self._script_status.configure(text="")
+            return
+
+        cli = _find_cli(directory)
+        export = _find_export_script(directory)
+        import_ = _find_import_script(directory)
+
+        self._status_label.configure(
+            text=f"✓ Carpeta encontrada: {directory}",
+            bootstyle="success" if (cli and export) else "warning",
+        )
+        self._cli_status.configure(
+            text=f"  CLI: {'✓' if cli else '✗'} UndertaleModCli"
+        )
+        self._script_status.configure(
+            text=(
+                f"  Exportar: {'✓' if export else '✗'} ExportAllStringsJSON.csx"
+                f"  |  Importar: {'✓' if import_ else '✗'} ImportAllStringsJSON.csx"
+            )
+        )
 
     # ── Browse ─────────────────────────────────────────────────
 
     def _browse(self) -> None:
-        path = filedialog.askopenfilename(
-            title="Seleccionar UMT CLI",
-            filetypes=[("Ejecutable", "*.exe"), ("Todos", "*.*")],
+        path = filedialog.askdirectory(
+            title="Seleccionar carpeta de UMT",
         )
         if path:
-            self._path_var.set(path)
+            self._dir_var.set(path)
 
     # ── Verify ─────────────────────────────────────────────────
 
     def _verify(self) -> None:
-        path = self._path_var.get().strip()
-        if not path:
-            messagebox.showerror("Error", "No hay una ruta seleccionada.")
+        directory = self._dir_var.get().strip()
+        if not directory:
+            messagebox.showerror("Error", "No hay una carpeta seleccionada.")
             return
-        p = Path(path)
-        if not p.exists() or not p.is_file():
-            messagebox.showerror("Error", f"El archivo no existe:\n{path}")
+        d = Path(directory)
+        if not d.exists() or not d.is_dir():
+            messagebox.showerror("Error", f"La carpeta no existe:\n{directory}")
             return
 
-        import subprocess
-        try:
-            result = subprocess.run([str(p), "--version"], capture_output=True, text=True, timeout=10)
-            version = result.stdout.strip() or result.stderr.strip()
-            msg = f"UMT CLI encontrado en:\n{path}\n\n"
-            msg += f"Versión: {version}" if version else "No se pudo obtener la versión."
+        ok, info = verify_umt(directory)
+        if ok:
+            _, export_ok, detail = umt_status(directory)
+            import_ = _find_import_script(directory)
+            msg = f"✓ UMT CLI verificado: {info}\n\n"
+            msg += f"  Export script: {'✓' if export_ok else '✗'}\n"
+            msg += f"  Import script: {'✓' if import_ else '✗'}\n\n"
+            msg += f"  {detail}"
             messagebox.showinfo("Verificación exitosa", msg)
-            self._status_label.configure(text=f"✓ UMT CLI verificado: {version or path}", bootstyle="success")
-        except FileNotFoundError:
-            messagebox.showerror("Error", f"No se puede ejecutar:\n{path}\n\n¿Es un ejecutable válido?")
-        except subprocess.TimeoutExpired:
-            messagebox.showerror("Error", "El comando tardó demasiado. ¿Es un ejecutable de UMT?")
+        else:
+            messagebox.showerror("Error de verificación", info)
 
     # ── Download ───────────────────────────────────────────────
 
@@ -145,7 +183,7 @@ class UmtTab(ttkb.Frame):
                 resp = urllib.request.urlopen(url, timeout=60)
                 data = resp.read()
 
-                extract_dir = Path(self._config.umt.cli_path or Path.cwd())
+                extract_dir = Path(self._config.umt.directory or Path.cwd())
                 if not extract_dir.exists() or not extract_dir.is_absolute():
                     extract_dir = Path.home() / ".dts" / "umt"
                 extract_dir.mkdir(parents=True, exist_ok=True)
@@ -153,14 +191,8 @@ class UmtTab(ttkb.Frame):
                 with zipfile.ZipFile(io.BytesIO(data)) as z:
                     z.extractall(path=str(extract_dir))
 
-                exe_name = "UndertaleModTool.exe" if system == "windows" else "UndertaleModTool"
-                found = list(extract_dir.rglob(exe_name))
-                if found:
-                    self._path_var.set(str(found[0]))
-                    self._dl_status.configure(text=f"✓ Descargado en: {found[0]}", bootstyle="success")
-                else:
-                    self._dl_status.configure(
-                        text="✓ Descargado pero no se encontró el ejecutable.", bootstyle="warning")
+                self._dir_var.set(str(extract_dir))
+                self._dl_status.configure(text=f"✓ Descargado y extraído en: {extract_dir}", bootstyle="success")
             except Exception as e:
                 self._dl_status.configure(text=f"Error en descarga: {e}", bootstyle="danger")
             finally:
@@ -171,7 +203,8 @@ class UmtTab(ttkb.Frame):
     # ── Sync ───────────────────────────────────────────────────
 
     def update_config(self, config: AppConfig) -> None:
+        dir_val = self._dir_var.get().strip() if hasattr(self, "_dir_var") else ""
         config.umt = UmtConfig(
-            cli_path=self._path_var.get().strip() if hasattr(self, "_path_var") else "",
+            directory=dir_val,
             auto_download=False,
         )

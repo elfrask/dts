@@ -12,6 +12,7 @@ license = { text = "MIT" }
 
 dependencies = [
     "google-genai>=1.0.0",
+    "ollama>=0.6.0",
     "click>=8.1.0",
     "rich>=13.0.0",
     "ttkbootstrap>=1.10.0",
