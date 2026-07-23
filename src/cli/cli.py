@@ -5,7 +5,6 @@ from pathlib import Path
 import click
 
 from src.config.defaults import (
-    DEFAULT_PROMPT,
     DEFAULT_CHUNK_SIZE,
     DEFAULT_MODEL,
     DEFAULT_PROVIDER,

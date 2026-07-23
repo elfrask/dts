@@ -6,7 +6,6 @@ from typing import Optional
 from src.config.defaults import (
     DEFAULT_SETTINGS_FILE,
     DEFAULT_APP_CONFIG_FILE,
-    DEFAULT_PROMPT,
     DEFAULT_CHUNK_SIZE,
     DEFAULT_MODEL,
     DEFAULT_OLLAMA_HOST,
@@ -65,7 +64,6 @@ def load_settings(settings_path: Optional[str] = None) -> ProjectConfig:
     if not path.exists():
         logger.info(f"Config file '{path}' not found. Using defaults.")
         return ProjectConfig(
-            prompt=DEFAULT_PROMPT,
             chunk_size=DEFAULT_CHUNK_SIZE,
             model=DEFAULT_MODEL,
         )
@@ -77,7 +75,6 @@ def load_settings(settings_path: Optional[str] = None) -> ProjectConfig:
     except (json.JSONDecodeError, IOError) as e:
         logger.warning(f"Error reading '{path}': {e}. Using defaults.")
         return ProjectConfig(
-            prompt=DEFAULT_PROMPT,
             chunk_size=DEFAULT_CHUNK_SIZE,
             model=DEFAULT_MODEL,
         )

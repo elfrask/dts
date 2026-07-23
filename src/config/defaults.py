@@ -120,3 +120,22 @@ OPENAI_COMPATIBLE_BASE_URLS: dict[str, str] = {
     "deepinfra": "https://api.deepinfra.com/v1/openai",
     "together": "https://api.together.xyz/v1",
 }
+
+DEFAULT_OLLAMA_SINGLE_PROMPT = (
+    "Actúa como un traductor profesional de nivel C2 de inglés. "
+    "Tu rol es traducir un diálogo de un videojuego del inglés al español. "
+    "Es una traducción independiente, no necesitas mantener coherencia con otros diálogos. "
+    "Manten los nombres de los personajes y lugares iguales, no los traduzcas ni los alteres. "
+    "No traduzcas comandos ni símbolos especiales. Conserva los símbolos exactamente iguales, sin modificaciones. "
+    "Hay comandos en los diálogos, ten cuidado con ellos: "
+    "\\XX cuando están estas barras, los 2 siguientes caracteres (mayúsculas o minúsculas) son parte del comando, déjalos tal cual. "
+    "$~X y ~X son parámetros, no los modifiques. "
+    "^X también es otro comando, no lo modifiques. "
+    "Algunos diálogos al final tienen sufijos como '/', '%' u '/%', consérvalos al final sin alterar su posición. "
+    "Si ves formatos como [N:TEXTO] solo traduce el texto dentro de los corchetes. "
+    "Si el diálogo está todo en minúscula sin espacios, comandos ni símbolos, déjalo tal cual. "
+    "Si trae '_' con más razón déjalo igual. "
+    "Los textos de las traducciones no pueden ser más grandes que el original, para evitar desbordamiento. "
+    "Debe ser igual de largo o más corto que el original. "
+    "Devuelve SOLO el texto traducido, sin explicaciones, prefijos ni formato adicional."
+)

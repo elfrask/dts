@@ -16,7 +16,7 @@ from src.io.formats import (
     ProviderType,
     OllamaConfig,
 )
-from src.config.defaults import OPENAI_COMPATIBLE_BASE_URLS
+from src.config.defaults import OPENAI_COMPATIBLE_BASE_URLS, DEFAULT_OLLAMA_SINGLE_PROMPT
 from src.core.api_manager import ApiKeyManager
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,17 @@ class TranslationProvider(ABC):
         on_progress: Optional[Callable] = None,
     ) -> TranslationResult:
         ...
+
+    def translate_single(
+        self,
+        key: str,
+        text: str,
+        prompt: str,
+        config: ProjectConfig,
+    ) -> str:
+        raise NotImplementedError(
+            f"Single-dialog translation is not supported by {self.name}"
+        )
 
     @property
     @abstractmethod
@@ -235,6 +246,26 @@ class OllamaProvider(TranslationProvider):
             failed_keys=list(items.keys()),
             error=f"All Ollama attempts failed: {last_error}",
         )
+
+    def translate_single(
+        self,
+        key: str,
+        text: str,
+        prompt: str,
+        config: ProjectConfig,
+    ) -> str:
+        effective_prompt = prompt or DEFAULT_OLLAMA_SINGLE_PROMPT
+        payload = f"{effective_prompt}\n\nDialogo:\n{text}"
+
+        resp = self._client.chat(
+            model=config.model,
+            messages=[{"role": "user", "content": payload}],
+            stream=False,
+        )
+        result = (resp.message.content or "").strip()
+        if not result:
+            raise RuntimeError(f"Empty response from Ollama for key '{key}'")
+        return result
 
 
 class OpenAICompatibleProvider(TranslationProvider):

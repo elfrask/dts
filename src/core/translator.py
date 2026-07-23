@@ -1,10 +1,9 @@
-import json
 import logging
 import time
 from pathlib import Path
 from typing import Optional, Callable
 
-from src.io.formats import ProjectConfig, TranslationProgress
+from src.io.formats import ProjectConfig, ProviderType
 from src.io.file_loader import load_json, ensure_json
 from src.io.file_writer import write_json
 from src.core.events import EventBus
@@ -41,6 +40,154 @@ def use_translate(
     keys = list(untranslated.keys())
     done_count = len(output_data)
 
+    # ── Safety net ─────────────────────────────────────────────
+    use_single = (
+        config.single_translate
+        and config.provider == ProviderType.OLLAMA
+    )
+    if config.single_translate and config.provider != ProviderType.OLLAMA:
+        logger.warning("single_translate solo funciona con Ollama. Usando batch mode.")
+        if event_bus:
+            event_bus.emit_log("warning", "single_translate solo funciona con Ollama. Forzando batch.")
+
+    if use_single:
+        _translate_single_mode(
+            provider=provider,
+            config=config,
+            keys=keys,
+            untranslated=untranslated,
+            output_data=output_data,
+            output_path=output_path,
+            total=total,
+            done_count=done_count,
+            event_bus=event_bus,
+            is_cancelled=is_cancelled,
+        )
+    else:
+        _translate_batch_mode(
+            provider=provider,
+            config=config,
+            keys=keys,
+            untranslated=untranslated,
+            output_data=output_data,
+            output_path=output_path,
+            total=total,
+            done_count=done_count,
+            event_bus=event_bus,
+            is_cancelled=is_cancelled,
+        )
+
+
+def _translate_single_mode(
+    *,
+    provider: TranslationProvider,
+    config: ProjectConfig,
+    keys: list[str],
+    untranslated: dict[str, str],
+    output_data: dict[str, str],
+    output_path: Path,
+    total: int,
+    done_count: int,
+    event_bus: Optional[EventBus],
+    is_cancelled: Optional[Callable[[], bool]],
+) -> None:
+    failed: list[str] = []
+
+    for i, key in enumerate(keys):
+        if is_cancelled and is_cancelled():
+            msg = f"Translation cancelled by user at {i}/{total}"
+            logger.info(msg)
+            if event_bus:
+                event_bus.emit_log("info", msg)
+            break
+
+        if event_bus:
+            event_bus.emit_progress(done_count, total + done_count)
+
+        text = untranslated[key]
+
+        for attempt in range(3):
+            try:
+                translated = provider.translate_single(
+                    key=key,
+                    text=text,
+                    prompt="",
+                    config=config,
+                )
+                output_data[key] = translated
+                done_count += 1
+                write_json(output_path, output_data)
+                if event_bus:
+                    event_bus.emit_log(
+                        "info",
+                        f"✓ {key} ({done_count}/{total + len(output_data) - done_count})",
+                    )
+                break
+
+            except NotImplementedError:
+                logger.warning(
+                    "translate_single not supported by %s, falling back to batch",
+                    provider.name,
+                )
+                # Fall back to batch for remaining items
+                remaining_keys = keys[i:]
+                remaining_untranslated = {k: untranslated[k] for k in remaining_keys}
+                _translate_batch_mode(
+                    provider=provider,
+                    config=config,
+                    keys=remaining_keys,
+                    untranslated=remaining_untranslated,
+                    output_data=output_data,
+                    output_path=output_path,
+                    total=total,
+                    done_count=done_count,
+                    event_bus=event_bus,
+                    is_cancelled=is_cancelled,
+                )
+                return
+
+            except Exception as e:
+                logger.warning(
+                    "Single translate attempt %d/3 for '%s' failed: %s",
+                    attempt + 1, key, e,
+                )
+                if attempt == 2:
+                    failed.append(key)
+                    if event_bus:
+                        event_bus.emit_log("warning", f"✗ {key} (failed after 3 attempts)")
+                time.sleep(1)
+
+        # No sleep between Ollama single dialogs (local, no rate limits)
+        if i < total - 1 and not (is_cancelled and is_cancelled()):
+            if event_bus:
+                event_bus.emit_progress(done_count, total + done_count)
+
+    if failed and event_bus:
+        event_bus.emit_error(f"Failed to translate {len(failed)} dialogs")
+
+    cancelled = is_cancelled and is_cancelled()
+    final_msg = (
+        f"{'Cancelled' if cancelled else 'Translation complete'}: "
+        f"{done_count}/{total + len(output_data) - done_count} dialogs"
+    )
+    logger.info(final_msg)
+    if event_bus:
+        event_bus.emit_complete(final_msg)
+
+
+def _translate_batch_mode(
+    *,
+    provider: TranslationProvider,
+    config: ProjectConfig,
+    keys: list[str],
+    untranslated: dict[str, str],
+    output_data: dict[str, str],
+    output_path: Path,
+    total: int,
+    done_count: int,
+    event_bus: Optional[EventBus],
+    is_cancelled: Optional[Callable[[], bool]],
+) -> None:
     tries = 0
     index = 0
     chunk_size = config.chunk_size

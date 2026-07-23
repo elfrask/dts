@@ -143,6 +143,7 @@ class ProjectConfig:
     provider: ProviderType = ProviderType.GEMINI
     prompt: str = ""
     model: str = "gemini-2.5-flash"
+    single_translate: bool = False
 
     umt: UmtConfig = field(default_factory=UmtConfig)
 
@@ -159,6 +160,7 @@ class ProjectConfig:
             "provider": self.provider.value,
             "prompt": self.prompt,
             "model": self.model,
+            "single_translate": self.single_translate,
             "umt_directory": self.umt.directory,
         }
 
@@ -179,6 +181,7 @@ class ProjectConfig:
             provider=ProviderType(data.get("provider", "gemini")),
             prompt=data.get("prompt", ""),
             model=data.get("model", "gemini-2.5-flash"),
+            single_translate=data.get("single_translate", False),
             umt=UmtConfig(directory=raw_dir),
         )
 

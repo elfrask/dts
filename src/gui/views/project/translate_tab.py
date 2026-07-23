@@ -6,7 +6,7 @@ import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 
 from src.config.settings import load_app_settings, save_project
-from src.config.defaults import DEFAULT_PROMPT, PROVIDER_MODELS
+from src.config.defaults import DEFAULT_PROMPT, DEFAULT_OLLAMA_SINGLE_PROMPT, PROVIDER_MODELS
 from src.core.provider import create_provider
 from src.core.translator import use_translate
 from src.core.events import EventBus, Signal
@@ -81,6 +81,24 @@ class TranslateTab(ttk.Frame):
         self._chunk_spin.bind("<FocusOut>", self._save_config)
         self._chunk_spin.bind("<Return>", self._save_config)
 
+        # Single-translate checkbox (only visible for Ollama)
+        self._single_var = tk.BooleanVar(value=project.config.single_translate)
+        self._single_check = ttk.Checkbutton(
+            cfg_frame, text="Traducir diálogo por diálogo (para modelos Ollama pequeños)",
+            variable=self._single_var, bootstyle="round-toggle",
+            command=self._on_single_toggle,
+        )
+        self._single_check.grid(row=3, column=0, columnspan=3, sticky="w", pady=(6, 0))
+        self._single_label = ttk.Label(
+            cfg_frame,
+            text="Evita errores de formato JSON con modelos locales pequeños. "
+                 "Cada diálogo se envía como texto plano, uno por uno.",
+            font=("Segoe UI", 8),
+            bootstyle="secondary",
+        )
+        self._single_label.grid(row=4, column=0, columnspan=3, sticky="w", pady=(0, 3))
+        self._update_single_ui()
+
         self._populate_providers()
 
         ttk.Separator(self, orient=HORIZONTAL).pack(fill=X, pady=5)
@@ -119,19 +137,30 @@ class TranslateTab(ttk.Frame):
         prompt_frame.rowconfigure(0, weight=1)
         self._bottom_notebook.add(prompt_frame, text="Prompt")
 
-        prompt_text = self.state.project.config.prompt or DEFAULT_PROMPT #type: ignore
-        self._prompt_text = tk.Text(
-            prompt_frame, wrap="word", font=("Consolas", 10),
-            height=12, relief="flat", borderwidth=1,
-            highlightthickness=1, highlightbackground="#444",
-        )
-        self._prompt_text.insert("1.0", prompt_text)
-        self._prompt_text.configure(state="disabled")
-        self._prompt_text.grid(row=0, column=0, sticky="nsew")
+        sub = ttk.Notebook(prompt_frame)
+        sub.grid(row=0, column=0, sticky="nsew")
 
-        scroll = ttk.Scrollbar(prompt_frame, orient=VERTICAL, command=self._prompt_text.yview)
-        self._prompt_text.configure(yscrollcommand=scroll.set)
-        scroll.grid(row=0, column=1, sticky="ns")
+        def _make_pane(label: str, text: str) -> None:
+            f = ttk.Frame(sub, padding=5)
+            f.columnconfigure(0, weight=1)
+            f.rowconfigure(0, weight=1)
+            sub.add(f, text=label)
+            txt = tk.Text(
+                f, wrap="word", font=("Consolas", 10),
+                height=12, relief="flat", borderwidth=1,
+                highlightthickness=1, highlightbackground="#444",
+                state="disabled",
+            )
+            txt.grid(row=0, column=0, sticky="nsew")
+            txt.configure(state="normal")
+            txt.insert("1.0", text)
+            txt.configure(state="disabled")
+            scr = ttk.Scrollbar(f, orient=VERTICAL, command=txt.yview)
+            txt.configure(yscrollcommand=scr.set)
+            scr.grid(row=0, column=1, sticky="ns")
+
+        _make_pane("Por lotes (batch)", DEFAULT_PROMPT)
+        _make_pane("Individual (Ollama)", DEFAULT_OLLAMA_SINGLE_PROMPT)
 
     def _build_logs_tab(self) -> None:
         log_frame = ttk.Frame(self._bottom_notebook, padding=10)
@@ -172,6 +201,10 @@ class TranslateTab(ttk.Frame):
         self._populate_models()
 
     def _on_provider_change(self, event=None) -> None:
+        # Force-disable single_translate for non-Ollama providers
+        if self._provider_var.get() != "ollama":
+            self._single_var.set(False)
+        self._update_single_ui()
         self._populate_models()
         self._save_config()
 
@@ -185,6 +218,21 @@ class TranslateTab(ttk.Frame):
         current = self._model_var.get()
         if current not in models:
             self._model_var.set(models[0] if models else "")
+        self._save_config()
+
+    def _update_single_ui(self) -> None:
+        is_ollama = self._provider_var.get() == "ollama"
+        active = is_ollama and self._single_var.get()
+        if is_ollama:
+            self._single_check.grid()
+            self._single_label.grid()
+        else:
+            self._single_check.grid_remove()
+            self._single_label.grid_remove()
+        self._chunk_spin.configure(state="disabled" if active else "normal")
+
+    def _on_single_toggle(self) -> None:
+        self._update_single_ui()
         self._save_config()
 
     def _detect_ollama(self) -> bool:
@@ -215,6 +263,7 @@ class TranslateTab(ttk.Frame):
         project.config.provider = ProviderType(self._provider_var.get())
         project.config.model = self._model_var.get()
         project.config.chunk_size = self._chunk_var.get()
+        project.config.single_translate = self._single_var.get()
         save_project(project)
 
     # ── Translation ────────────────────────────────────────────
@@ -256,6 +305,7 @@ class TranslateTab(ttk.Frame):
         self._log(f"Proveedor: {project.config.provider.value}")
         self._log(f"Modelo: {project.config.model}")
         self._log(f"Chunk size: {project.config.chunk_size}")
+        self._log(f"Modo: {'diálogo por diálogo' if project.config.single_translate else 'por lotes (batch)'}")
         self._log(f"Input: {project.input_file_path}")
         self._log(f"Output: {project.output_file_path}")
 
