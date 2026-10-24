@@ -1,0 +1,86 @@
+name: Build release
+
+on:
+  push:
+    branches:
+      - releases
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Build Windows binaries
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build with PyInstaller
+        run: python build.py
+
+      - name: Package artifact
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/dts/* -DestinationPath dts-v2.2-windows-x64.zip
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v2.2
+          name: DTS v2.2
+          target_commitish: ${{ github.sha }}
+          draft: false
+          prerelease: false
+          make_latest: true
+          files: dts-v2.2-windows-x64.zip
+          body: |
+            ## DTS v2.2
+
+            **Build:** v2.2 dev-20261024
+
+            Traductor de dialogos de GameMaker con IA. Esta version agrega
+            proveedores personalizados, el proveedor nativo CommandCode y
+            auditoria de consumo.
+
+            ### Novedades
+            - **Auditoria de tokens y costos**: pestana que registra proveedor,
+              modelo, tokens de entrada/salida, dialogos, intentos y costo
+              estimado por solicitud. Se persiste en `audit.json` dentro del
+              proyecto.
+            - **Proveedor CommandCode nativo**: un solo API key para DeepSeek,
+              Claude, GPT, Gemini, Qwen, GLM, Kimi y mas. Enrutado automatico de
+              Claude por `/v1/messages` y el resto por `/v1/chat/completions`.
+            - **Proveedores personalizados**: conecta cualquier endpoint
+              compatible con OpenAI o Anthropic; carga su catalogo de modelos en
+              vivo.
+            - **Modelos dinamicos**: boton "Actualizar modelos" que consulta
+              `GET /models` del proveedor.
+            - **Cliente HTTP sin SDK**: se elimino la dependencia de `openai`;
+              las llamadas usan `urllib` de la stdlib.
+            - **Modo rapido**: checkbox en la pestana Traducir para desactivar la
+              pausa de 7 s entre lotes.
+            - **Sin modo pensamiento**: instruccion explicita en todos los
+              prompts (incluidos los personalizados).
+
+            ### Instalacion
+            ```
+            pip install -r requirements.txt
+            py -m src.main
+            ```
+
+            ### Tests
+            51 tests pasando.

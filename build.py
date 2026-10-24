@@ -11,6 +11,8 @@ params = [
   "--console",
   f"--name={exec_name}",
   "--icon=assets/icon.ico",
+  # ttkbootstrap loads its themes from JSON data files
+  "--collect-all=ttkbootstrap",
 ]
 
 def build():
