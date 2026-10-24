@@ -1,17 +1,16 @@
+import re
+import threading
 import tkinter as tk
+from tkinter import messagebox, simpledialog
+
 import ttkbootstrap as ttkb
 from ttkbootstrap.constants import *
 
-from src.io.formats import AppConfig, OllamaConfig, ProviderKeys, ApiKeyEntry
-from src.config.defaults import (
-    PROVIDER_MODELS,
-    GEMINI_MODELS as _GEMINI_MODELS,
-    ANTHROPIC_MODELS as _ANTHROPIC_MODELS,
-    OPENAI_MODELS as _OPENAI_MODELS,
-    GROQ_MODELS as _GROQ_MODELS,
-    DEEPINFRA_MODELS as _DEEPINFRA_MODELS,
-    TOGETHER_MODELS as _TOGETHER_MODELS,
+from src.io.formats import (
+    AppConfig, OllamaConfig, ProviderKeys, ApiKeyEntry, CustomProviderConfig,
 )
+from src.config.defaults import BUILTIN_PROVIDERS, API_TYPES
+from src.core.model_catalog import fetch_models
 
 
 class ProviderTab(ttkb.Frame):
@@ -21,8 +20,14 @@ class ProviderTab(ttkb.Frame):
         self.columnconfigure(1, weight=1)
         self.rowconfigure(0, weight=1)
 
+        self._current_provider_name: str | None = None
+        self._current_custom_name: str | None = None
+        self._current_key_vars: list[dict] = []
+        self._current_model_vars: dict[str, tk.BooleanVar] = {}
+        self._custom_models: list[str] = []
+
         # Left: provider list
-        left = ttkb.Frame(self, width=140)
+        left = ttkb.Frame(self, width=160)
         left.grid(row=0, column=0, sticky="ns", padx=(0, 10))
         left.grid_propagate(False)
 
@@ -36,10 +41,19 @@ class ProviderTab(ttkb.Frame):
             relief="flat",
             highlightthickness=0,
             borderwidth=0,
-            height=8,
+            height=10,
         )
-        self._provider_listbox.pack(fill=BOTH, expand=True, pady=(5, 0))
+        self._provider_listbox.pack(fill=BOTH, expand=True, pady=(5, 6))
         self._provider_listbox.bind("<<ListboxSelect>>", self._on_provider_select)
+
+        ttkb.Button(
+            left, text="+ Nuevo proveedor", command=self._add_custom_provider,
+            bootstyle="success-outline", width=18,
+        ).pack(fill=X, pady=(0, 4))
+        ttkb.Button(
+            left, text="− Eliminar", command=self._delete_custom_provider,
+            bootstyle="danger-outline", width=18,
+        ).pack(fill=X)
 
         # Right: config area
         self._config_frame = ttkb.Frame(self)
@@ -58,17 +72,89 @@ class ProviderTab(ttkb.Frame):
         canvas.grid(row=0, column=0, sticky="nsew")
         scrollbar.grid(row=0, column=1, sticky="ns")
 
-        # Provider list: cloud key-based first, then local
-        self._provider_order = ["gemini", "groq", "deepinfra", "together", "anthropic", "openai", "ollama"]
-
-        for pname in self._provider_order:
-            if pname not in config.providers:
-                config.providers[pname] = ProviderKeys()
-            self._provider_listbox.insert(END, pname)
-
+        self._refresh_provider_list()
         if self._provider_listbox.size() > 0:
             self._provider_listbox.selection_set(0)
             self._on_provider_select()
+
+    # ── Provider list management ───────────────────────────────
+
+    def _refresh_provider_list(self, select: str | None = None) -> None:
+        self._provider_listbox.delete(0, END)
+        names = list(BUILTIN_PROVIDERS)
+        for cp in self._config.custom_providers:
+            names.append(cp.name)
+        for pname in names:
+            if pname not in self._config.providers:
+                self._config.providers[pname] = ProviderKeys()
+            self._provider_listbox.insert(END, pname)
+
+        if select and select in names:
+            idx = names.index(select)
+            self._provider_listbox.selection_clear(0, END)
+            self._provider_listbox.selection_set(idx)
+            self._provider_listbox.see(idx)
+            self._on_provider_select()
+
+    def _add_custom_provider(self) -> None:
+        label = simpledialog.askstring(
+            "Nuevo proveedor",
+            "Nombre del proveedor (ej: Mi servidor local):",
+            parent=self.winfo_toplevel(),
+        )
+        if not label:
+            return
+        name = self._slugify(label)
+        if not name:
+            messagebox.showerror("Error", "Nombre inválido.", parent=self.winfo_toplevel())
+            return
+        if name in BUILTIN_PROVIDERS or self._config.get_custom_provider(name):
+            messagebox.showerror(
+                "Error", f"Ya existe un proveedor llamado '{name}'.",
+                parent=self.winfo_toplevel())
+            return
+
+        self._commit_custom_form()
+        self._config.custom_providers.append(
+            CustomProviderConfig(name=name, label=label.strip(), api_type="openai")
+        )
+        self._config.providers.setdefault(name, ProviderKeys())
+        self._refresh_provider_list(select=name)
+
+    def _delete_custom_provider(self) -> None:
+        sel = self._provider_listbox.curselection()
+        if not sel:
+            return
+        name = self._provider_listbox.get(sel[0])
+        cp = self._config.get_custom_provider(name)
+        if cp is None:
+            messagebox.showinfo(
+                "Proveedor integrado",
+                "Solo puedes eliminar proveedores personalizados.",
+                parent=self.winfo_toplevel(),
+            )
+            return
+        if not messagebox.askyesno(
+            "Eliminar proveedor",
+            f"¿Eliminar '{cp.display_name}' y sus API keys?",
+            parent=self.winfo_toplevel(),
+        ):
+            return
+
+        self._config.custom_providers = [
+            p for p in self._config.custom_providers if p.name != name
+        ]
+        self._config.providers.pop(name, None)
+        self._current_custom_name = None
+        self._refresh_provider_list()
+        if self._provider_listbox.size() > 0:
+            self._provider_listbox.selection_set(0)
+            self._on_provider_select()
+
+    @staticmethod
+    def _slugify(text: str) -> str:
+        slug = re.sub(r"[^a-z0-9]+", "_", text.strip().lower()).strip("_")
+        return slug
 
     # ── Shared helpers ──────────────────────────────────────────
 
@@ -86,7 +172,7 @@ class ProviderTab(ttkb.Frame):
         self._current_key_rows = ttkb.Frame(self._inner)
         self._current_key_rows.pack(fill=X, pady=5)
 
-        self._current_key_vars: list[dict] = []
+        self._current_key_vars = []
         for entry in self._get_provider(provider_name).keys:
             self._add_key_row(entry)
 
@@ -109,7 +195,7 @@ class ProviderTab(ttkb.Frame):
         ttkb.Label(self._inner, text="Modelos disponibles", font=("Segoe UI", 13, "bold")).pack(
             anchor="w", pady=(10, 5))
 
-        self._current_model_vars: dict[str, tk.BooleanVar] = {}
+        self._current_model_vars = {}
         for name, api_id, desc in models:
             var = tk.BooleanVar(value=True)
             row = ttkb.Frame(self._inner)
@@ -177,14 +263,48 @@ class ProviderTab(ttkb.Frame):
             return
         pname = self._provider_listbox.get(sel[0])
 
+        # Persist whatever the previously selected provider had on screen
+        self._commit_custom_form()
+
         for w in self._inner.winfo_children():
             w.destroy()
 
         self._current_key_vars = []
         self._current_model_vars = {}
         self._current_provider_name = pname
+        self._current_custom_name = None
 
-        if pname == "gemini":
+        if self._config.get_custom_provider(pname) is not None:
+            self._build_custom(pname)
+            return
+
+        if pname == "commandcode":
+            self._build_api_key_section(
+                "commandcode", "CommandCode — Todos los modelos, una API")
+            self._build_model_section([
+                ("DeepSeek V4.1 Flash", "deepseek/deepseek-v4.1-flash",
+                 "Rápido y económico. Recomendado."),
+                ("DeepSeek V4 Pro", "deepseek/deepseek-v4-pro",
+                 "Razonamiento de contexto largo."),
+                ("Claude Sonnet 5.5", "claude-sonnet-5-5",
+                 "El mejor siguiendo instrucciones complejas."),
+                ("Claude Haiku 5.5", "claude-haiku-5-5",
+                 "Rápido y compacto."),
+                ("GPT-5.6 Sol", "gpt-5.6-sol",
+                 "Modelo frontera de OpenAI."),
+                ("Gemini 3.8 Flash", "google/gemini-3.8-flash",
+                 "Rápido y capaz."),
+                ("GLM-5.3 Flash", "z-ai/glm-5.3-flash",
+                 "Económico con 1M de contexto."),
+            ])
+            ttkb.Label(
+                self._inner,
+                text="Los modelos Claude se enrutan automáticamente por el endpoint "
+                     "Anthropic (/v1/messages) y el resto por /v1/chat/completions. "
+                     "El catálogo real se carga con «Actualizar modelos».",
+                font=("Segoe UI", 9), bootstyle="secondary",
+            ).pack(anchor="w", pady=(10, 0))
+        elif pname == "gemini":
             self._build_gemini()
         elif pname == "ollama":
             self._build_ollama()
@@ -232,6 +352,180 @@ class ProviderTab(ttkb.Frame):
                 ("GPT-4o", "gpt-4o",
                  "Máxima inteligencia para textos enrevesados."),
             ])
+
+    # ── Custom provider form ───────────────────────────────────
+
+    def _build_custom(self, name: str) -> None:
+        cp = self._config.get_custom_provider(name)
+        if cp is None:
+            return
+        self._current_custom_name = name
+        self._custom_models = list(cp.models)
+
+        ttkb.Label(
+            self._inner, text="Proveedor personalizado",
+            font=("Segoe UI", 13, "bold"),
+        ).pack(anchor="w", pady=(0, 10))
+
+        ttkb.Label(
+            self._inner,
+            text="Conecta cualquier endpoint compatible con OpenAI o Anthropic. "
+                 "La API key se guarda en la configuración global.",
+            font=("Segoe UI", 9), bootstyle="secondary",
+        ).pack(anchor="w", pady=(0, 10))
+
+        form = ttkb.Frame(self._inner)
+        form.pack(fill=X, pady=(0, 12))
+        form.columnconfigure(1, weight=1)
+
+        self._cp_label_var = tk.StringVar(value=cp.label or cp.name)
+        self._cp_api_var = tk.StringVar(value=cp.api_type or "openai")
+        self._cp_url_var = tk.StringVar(value=cp.base_url)
+
+        ttkb.Label(form, text="Nombre:").grid(row=0, column=0, sticky="w", pady=3)
+        ttkb.Entry(form, textvariable=self._cp_label_var, width=38).grid(
+            row=0, column=1, sticky="w", padx=(8, 0), pady=3)
+
+        ttkb.Label(form, text="Tipo de API:").grid(row=1, column=0, sticky="w", pady=3)
+        ttkb.Combobox(
+            form, textvariable=self._cp_api_var, state="readonly", width=36,
+            values=list(API_TYPES.keys()),
+        ).grid(row=1, column=1, sticky="w", padx=(8, 0), pady=3)
+
+        ttkb.Label(form, text="Base URL:").grid(row=2, column=0, sticky="w", pady=3)
+        ttkb.Entry(form, textvariable=self._cp_url_var, width=38).grid(
+            row=2, column=1, sticky="w", padx=(8, 0), pady=3)
+        ttkb.Label(
+            form,
+            text="Ej: https://api.miservidor.com/v1  ·  Anthropic: https://api.anthropic.com",
+            font=("Segoe UI", 8), bootstyle="secondary",
+        ).grid(row=3, column=1, sticky="w", padx=(8, 0))
+
+        # API keys reuse the standard section
+        self._build_api_key_section(name, "API Keys")
+
+        # Models manager
+        ttkb.Label(self._inner, text="Modelos disponibles", font=("Segoe UI", 13, "bold")).pack(
+            anchor="w", pady=(10, 5))
+
+        models_row = ttkb.Frame(self._inner)
+        models_row.pack(fill=X, pady=(0, 6))
+
+        self._models_listbox = tk.Listbox(
+            models_row, height=6, font=("Segoe UI", 10),
+            relief="flat", highlightthickness=1, highlightbackground="#444",
+        )
+        self._models_listbox.pack(side=LEFT, fill=BOTH, expand=True)
+        self._render_custom_models()
+
+        side = ttkb.Frame(models_row)
+        side.pack(side=LEFT, padx=(8, 0), fill=Y)
+
+        self._new_model_var = tk.StringVar()
+        ttkb.Entry(side, textvariable=self._new_model_var, width=26).pack(fill=X, pady=(0, 4))
+        ttkb.Button(
+            side, text="+ Agregar", command=self._add_custom_model,
+            bootstyle="success-outline", width=12,
+        ).pack(fill=X, pady=(0, 4))
+        ttkb.Button(
+            side, text="− Quitar", command=self._remove_custom_model,
+            bootstyle="danger-outline", width=12,
+        ).pack(fill=X, pady=(0, 10))
+        self._load_models_btn = ttkb.Button(
+            side, text="Cargar del proveedor", command=self._load_custom_models,
+            bootstyle="info-outline", width=18,
+        )
+        self._load_models_btn.pack(fill=X)
+
+        self._custom_status = ttkb.Label(
+            self._inner, text="", font=("Segoe UI", 9), bootstyle="secondary")
+        self._custom_status.pack(anchor="w", pady=(6, 0))
+
+    def _render_custom_models(self) -> None:
+        if not hasattr(self, "_models_listbox"):
+            return
+        self._models_listbox.delete(0, END)
+        for m in self._custom_models:
+            self._models_listbox.insert(END, m)
+
+    def _add_custom_model(self) -> None:
+        value = self._new_model_var.get().strip()
+        if not value:
+            return
+        if value not in self._custom_models:
+            self._custom_models.append(value)
+            self._render_custom_models()
+        self._new_model_var.set("")
+
+    def _remove_custom_model(self) -> None:
+        if not hasattr(self, "_models_listbox"):
+            return
+        sel = self._models_listbox.curselection()
+        if not sel:
+            return
+        value = self._models_listbox.get(sel[0])
+        self._custom_models = [m for m in self._custom_models if m != value]
+        self._render_custom_models()
+
+    def _load_custom_models(self) -> None:
+        if not self._current_custom_name:
+            return
+        api_type = self._cp_api_var.get().strip() or "openai"
+        base_url = self._cp_url_var.get().strip()
+        keys = self._read_current_keys(self._current_custom_name)
+        key = next((k.key for k in keys if k.enabled and k.key), "")
+
+        if not key:
+            self._custom_status.configure(
+                text="⚠ Agrega una API key para consultar los modelos.", bootstyle="warning")
+            return
+
+        self._load_models_btn.configure(state=DISABLED, text="Cargando...")
+        self._custom_status.configure(text="Consultando modelos...", bootstyle="info")
+        target = self._current_custom_name
+
+        def worker() -> None:
+            models = fetch_models(api_type, key, base_url)
+
+            def apply() -> None:
+                if target != self._current_custom_name:
+                    return
+                try:
+                    self._load_models_btn.configure(state=NORMAL, text="Cargar del proveedor")
+                    if models:
+                        self._custom_models = models
+                        self._render_custom_models()
+                        self._custom_status.configure(
+                            text=f"✓ {len(models)} modelos cargados.", bootstyle="success")
+                    else:
+                        self._custom_status.configure(
+                            text="No se pudieron cargar modelos. Agrégalos manualmente.",
+                            bootstyle="warning")
+                except tk.TclError:
+                    pass
+
+            self.after_idle(apply)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _commit_custom_form(self) -> None:
+        """Write the custom provider form back into the config object."""
+        if not self._current_custom_name:
+            return
+        cp = self._config.get_custom_provider(self._current_custom_name)
+        if cp is None:
+            return
+        try:
+            cp.label = self._cp_label_var.get().strip() or cp.name
+            cp.api_type = self._cp_api_var.get().strip() or "openai"
+            cp.base_url = self._cp_url_var.get().strip()
+            cp.models = list(self._custom_models)
+            if hasattr(self, "_current_key_vars"):
+                self._config.providers.setdefault(cp.name, ProviderKeys()).keys = (
+                    self._read_current_keys(cp.name)
+                )
+        except (tk.TclError, AttributeError):
+            pass
 
     # ── Gemini ─────────────────────────────────────────────────
 
@@ -307,7 +601,7 @@ class ProviderTab(ttkb.Frame):
             ttkb.Label(self._ollama_models, text="No se encontraron modelos", bootstyle="warning").pack(anchor="w")
             return
 
-        self._ollama_model_vars: dict[str, tk.BooleanVar] = {}
+        self._ollama_model_vars = {}
         for model in models:
             var = tk.BooleanVar(value=True)
             ttkb.Checkbutton(self._ollama_models, text=model,
@@ -323,8 +617,11 @@ class ProviderTab(ttkb.Frame):
     # ── Sync config from UI ────────────────────────────────────
 
     def update_config(self, config: AppConfig) -> None:
-        # Save keys for the currently-selected provider
-        if hasattr(self, "_current_key_vars") and hasattr(self, "_current_provider_name"):
+        # Persist custom provider edits first
+        self._commit_custom_form()
+
+        # Save keys for the currently-selected built-in provider
+        if not self._current_custom_name and self._current_provider_name:
             pname = self._current_provider_name
             # Skip ollama — it has no API keys
             if pname != "ollama":

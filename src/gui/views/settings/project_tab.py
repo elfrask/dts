@@ -16,7 +16,7 @@ class ProjectTab(ttkb.Frame):
             ).pack(anchor="w", pady=(0, 15))
 
             items = [
-                ("Proveedor:", cfg.provider.value),
+                ("Proveedor:", str(getattr(cfg.provider, "value", cfg.provider))),
                 ("Modelo:", cfg.model),
                 ("Chunk size:", str(cfg.chunk_size)),
                 ("strings.json:", cfg.route_strings_file),

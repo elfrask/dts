@@ -2,6 +2,34 @@
 
 DTS soporta múltiples proveedores de IA para la traducción. Se dividen en tres categorías según su velocidad y caso de uso.
 
+## 0. Agregador — CommandCode
+
+Un solo API key para todos los modelos principales (DeepSeek, Claude, GPT, Gemini, Qwen, GLM, Kimi…).
+
+- **API**: OpenAI-compatible **y** Anthropic Messages
+- **URL base (OpenAI)**: `https://api.commandcode.ai/provider/v1`
+- **URL base (Anthropic)**: `https://api.commandcode.ai/provider` (el SDK añade `/v1/messages`)
+- **Catálogo**: `GET https://api.commandcode.ai/provider/v1/models`
+- **Requiere**: API key (plan Provider, GOAT, Pro, Max o Team; el plan Go no tiene API)
+
+Los modelos Claude se enrutan automáticamente por `/v1/messages`; el resto por
+`/v1/chat/completions`. El catálogo se carga en vivo con **"Actualizar modelos"**
+o **"Cargar del proveedor"**.
+
+| Modelo | Descripción |
+|---|---|
+| `deepseek/deepseek-v4.1-flash` | Rápido y económico, recomendado |
+| `deepseek/deepseek-v4-pro` | Razonamiento de contexto largo |
+| `claude-sonnet-5-5` | Excelente siguiendo instrucciones complejas |
+| `claude-haiku-5-5` | Rápido y compacto |
+| `gpt-5.6-sol` | Modelo frontera de OpenAI |
+| `google/gemini-3.8-flash` | Rápido y capaz |
+| `z-ai/glm-5.3-flash` | Económico con 1M de contexto |
+
+> La lista anterior es solo respaldo. El catálogo real (más de 60 modelos) se
+> consulta al endpoint `/models`; los modelos de decisión `typesafe/*` se
+> excluyen porque no son modelos de chat.
+
 ## 1. Ultra Velocidad (Inferencia especializada)
 
 Estos proveedores usan hardware optimizado para alta velocidad, ideales para lotes masivos de diálogos sencillos.
@@ -80,6 +108,40 @@ Estos proveedores usan hardware optimizado para alta velocidad, ideales para lot
 Los modelos disponibles se detectan automáticamente desde la instalación local de Ollama.
 
 > **Nota**: Ollama solo aparece en el selector de proveedores si el motor está corriendo y responde en `http://localhost:11434/api/tags`.
+
+## 4. Proveedores personalizados
+
+Puedes conectar cualquier endpoint que hable el protocolo de OpenAI o de
+Anthropic, sin tocar el código: vLLM, LM Studio, LiteLLM, un proxy corporativo,
+etc.
+
+### Crear uno desde la GUI
+
+1. **Configuración global** → pestaña **Proveedor de IA**
+2. Pulsa **"+ Nuevo proveedor"** y escribe un nombre
+3. Completa el formulario:
+   - **Nombre visible**: etiqueta que verás en la lista
+   - **Tipo de API**: `openai` (compatible) o `anthropic`
+   - **Base URL**: por ejemplo `http://localhost:8000/v1`
+   - **API keys**: igual que cualquier otro proveedor
+4. En **Modelos disponibles** pulsa **"Cargar del proveedor"** para consultar el
+   catálogo (`GET {base_url}/models`), o agrega los modelos a mano
+5. Guarda y selecciona el proveedor en la pestaña **Traducir**
+
+### Modelos dinámicos
+
+Cada proveedor puede listar sus modelos en vivo:
+
+| Proveedor | Endpoint consultado |
+|---|---|
+| OpenAI-compatible | `GET {base_url}/models` |
+| Anthropic | `GET /v1/models` |
+| Gemini | `client.models.list()` |
+| Ollama | `GET /api/tags` |
+
+Si el endpoint no responde, DTS usa la lista guardada por el usuario (custom) o
+la lista estática integrada. En la pestaña **Traducir** puedes forzar un refresco
+con el botón **"Actualizar modelos"**.
 
 ## Configuración de API keys
 

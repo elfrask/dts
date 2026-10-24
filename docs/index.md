@@ -5,9 +5,11 @@
 ## Características
 
 - **Múltiples proveedores de IA**: Gemini, OpenAI, Anthropic (Claude), Groq, DeepInfra, Together AI, y Ollama (local).
+- **Proveedores personalizados**: conecta cualquier endpoint compatible con OpenAI o Anthropic y descubre sus modelos en vivo.
 - **Dos interfaces**: GUI gráfica (ttkbootstrap) y CLI completa (Click).
 - **Sistema de proyectos**: cada proyecto tiene su propia configuración, archivos de entrada/salida y estado.
 - **Pipeline automatizado**: extraer strings → traducir → normalizar → exportar.
+- **Auditoría de consumo**: tokens de entrada/salida, diálogos, intentos y costo estimado por solicitud, guardado en `audit.json`.
 - **Post-procesamiento**: normalización de caracteres, limpieza de valores vacíos, preservación de comandos especiales.
 - **Integración UMT**: extracción e importación directa desde/hacia archivos `data.win`.
 

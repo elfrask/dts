@@ -12,6 +12,7 @@ Todos los archivos generados se almacenan dentro del directorio del proyecto. La
 | `lang_es_normalize.json` | Output normalizado | Mismo formato que `lang_es_out.json` |
 | `strings_es.json` | Strings resultantes aplicados | Mismo formato que `strings.json` |
 | `lang_manual_edit.json` | Edición manual de diálogos faltantes | Mismo formato que `lang_es_out.json` |
+| `audit.json` | Auditoría de tokens y costos por solicitud | `{"entries": [...]}` |
 | `settings.json` | Configuración del proyecto | Ver sección ProjectConfig |
 
 ## Configuración de la aplicación (AppConfig)
@@ -34,8 +35,23 @@ Contiene datos sensibles (API keys) y configuración global. Nunca se almacena d
       "keys": [
         {"name": "main", "key": "gsk_...", "enabled": true}
       ]
+    },
+    "mi_servidor_vllm": {
+      "keys": [
+        {"name": "local", "key": "dummy", "enabled": true}
+      ]
     }
   },
+  "custom_providers": [
+    {
+      "name": "mi_servidor_vllm",
+      "label": "Mi servidor vLLM",
+      "api_type": "openai",
+      "base_url": "http://localhost:8000/v1",
+      "models": ["meta-llama/Llama-3.3-70B-Instruct"],
+      "enabled": true
+    }
+  ],
   "ollama_host": "http://localhost",
   "ollama_port": 11434,
   "ollama_timeout": 120,
@@ -48,7 +64,8 @@ Contiene datos sensibles (API keys) y configuración global. Nunca se almacena d
 
 | Campo | Tipo | Defecto | Descripción |
 |---|---|---|---|
-| `providers` | objeto | `{}` | Mapa de nombre de proveedor a sus API keys |
+| `providers` | objeto | `{}` | Mapa de nombre de proveedor (integrado o custom) a sus API keys |
+| `custom_providers` | lista | `[]` | Proveedores definidos por el usuario (`name`, `label`, `api_type`, `base_url`, `models`, `enabled`) |
 | `ollama_host` | string | `"http://localhost"` | Host del servidor Ollama |
 | `ollama_port` | int | `11434` | Puerto del servidor Ollama |
 | `ollama_timeout` | int | `120` | Timeout de conexión a Ollama (segundos) |
@@ -72,10 +89,13 @@ Contiene datos de sesión del proyecto. No contiene API keys ni datos de conexi�
   "route_strings_result_file": "strings_es.json",
   "route_normalize_file": "lang_es_normalize.json",
   "route_manual_file": "lang_manual_edit.json",
+  "route_audit_file": "audit.json",
   "chunk_size": 200,
   "provider": "gemini",
   "prompt": "Actúa como un traductor profesional...",
   "model": "gemini-3.5-flash",
+  "single_translate": false,
+  "paused_mode": true,
   "umt_directory": ""
 }
 ```
@@ -91,8 +111,10 @@ Contiene datos de sesión del proyecto. No contiene API keys ni datos de conexi�
 | `route_strings_result_file` | string | `"strings_es.json"` | Ruta al archivo de strings traducidos |
 | `route_normalize_file` | string | `"lang_es_normalize.json"` | Ruta al archivo normalizado |
 | `route_manual_file` | string | `"lang_manual_edit.json"` | Ruta al archivo de edición manual |
+| `route_audit_file` | string | `"audit.json"` | Ruta al archivo de auditoría de tokens/costos |
 | `chunk_size` | int | `200` | Diálogos por lote de traducción |
-| `provider` | string | `"gemini"` | Proveedor de IA activo |
+| `paused_mode` | bool | `true` | Si es `false`, omite la pausa de 7 s entre lotes |
+| `provider` | string | `"gemini"` | Id del proveedor activo (integrado o personalizado) |
 | `prompt` | string | `""` | Prompt de traducción (usa el default si está vacío) |
 | `model` | string | `"gemini-3.5-flash"` | Modelo de IA activo |
 | `umt_directory` | string | `""` | Carpeta UMT (hereda de AppConfig si no se especifica) |

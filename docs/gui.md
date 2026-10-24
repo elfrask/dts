@@ -19,7 +19,7 @@ Al iniciar, verás la pantalla de bienvenida con las siguientes opciones:
 
 ## Vista de proyecto
 
-Una vez abierto o creado un proyecto, se muestra un panel con 4 pestañas:
+Una vez abierto o creado un proyecto, se muestra un panel con 5 pestañas:
 
 ### 1. Resumen (Overview)
 
@@ -39,6 +39,8 @@ Interfaz para ejecutar la traducción:
 - **Configuración**:
   - **Proveedor**: selector de proveedor de IA (solo aparecen los que tienen API key configurada u Ollama detectado)
   - **Modelo**: selector de modelo, se actualiza según el proveedor seleccionado
+  - **Actualizar modelos**: consulta el catálogo en vivo del proveedor (`GET /models`)
+  - **Desactivar pausa entre lotes (modo rápido)**: elimina los 7 s de espera entre chunks. Se guarda como `paused_mode` en `settings.json`.
   - **Chunk size**: número de diálogos por lote (10-1000)
 - **Barra de progreso**: muestra el avance de la traducción
 - **Botón Iniciar/Cancelar**: inicia o detiene la traducción
@@ -79,6 +81,16 @@ Tres modos de exportación:
    - Extrae sus strings, fusiona las traducciones, y re-importa
    - Útil para traducir diferentes versiones del mismo juego
 
+### 5. Auditoría (Audit)
+
+Registro de consumo de cada solicitud de traducción:
+
+- **Tabla**: hora, proveedor, modelo, tokens de entrada, tokens de salida,
+  total de tokens, diálogos procesados, intentos y costo estimado (USD).
+- **Consumo total**: solicitudes, tokens de entrada/salida/totales y costo
+  estimado acumulado.
+- **Persistencia**: los datos se guardan en `audit.json` dentro del proyecto.
+
 ## Configuración global
 
 Accesible desde la pantalla de bienvenida o desde cualquier proyecto (botón "Config global").
@@ -89,6 +101,7 @@ Selecciona el proveedor en la lista lateral para configurarlo:
 
 | Proveedor | Configuración | Modelos |
 |---|---|---|
+| **CommandCode** | API key | Catálogo en vivo: DeepSeek, Claude, GPT, Gemini, Qwen, GLM, Kimi… |
 | **Gemini** | API key(s) | gemini-3.5-flash, 3.1-pro-preview, 3.1-flash-lite, 3.0-deep-think, 2.5-pro, 2.5-flash |
 | **Groq** | API key | openai/gpt-oss-20b, gpt-oss-120b, qwen/qwen3.6-27b |
 | **DeepInfra** | API key | DeepSeek-V4-Flash, Llama-3.3-70B, Qwen2.5-72B |
@@ -96,6 +109,11 @@ Selecciona el proveedor en la lista lateral para configurarlo:
 | **Anthropic** | API key | claude-3.5-sonnet, claude-3.5-haiku |
 | **OpenAI** | API key | gpt-4o-mini, gpt-4o |
 | **Ollama** | Host, Puerto, Timeout | Detecta modelos instalados automáticamente |
+
+Con **"+ Nuevo proveedor"** puedes añadir cualquier endpoint compatible con
+OpenAI o Anthropic (vLLM, LM Studio, LiteLLM, proxies...). Define nombre, tipo
+de API y Base URL; las API keys se gestionan igual que en los proveedores
+integrados. Usa **"Cargar del proveedor"** para descubrir sus modelos en vivo.
 
 ### Pestaña: Motor (UMT)
 

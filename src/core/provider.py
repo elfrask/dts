@@ -16,7 +16,12 @@ from src.io.formats import (
     ProviderType,
     OllamaConfig,
 )
-from src.config.defaults import OPENAI_COMPATIBLE_BASE_URLS, DEFAULT_OLLAMA_SINGLE_PROMPT
+from src.config.defaults import (
+    OPENAI_COMPATIBLE_BASE_URLS,
+    DEFAULT_OLLAMA_SINGLE_PROMPT,
+    COMMANDCODE_BASE_URL,
+    COMMANDCODE_ANTHROPIC_BASE_URL,
+)
 from src.core.api_manager import ApiKeyManager
 
 logger = logging.getLogger(__name__)
@@ -108,14 +113,14 @@ class GeminiProvider(TranslationProvider):
         return self._key_manager.key_count > 0
 
     def get_models(self) -> list[str]:
-        return [
-            "gemini-3.5-flash",
-            "gemini-3.1-pro-preview",
-            "gemini-3.1-flash-lite",
-            "gemini-3.0-deep-think",
-            "gemini-2.5-pro",
-            "gemini-2.5-flash",
-        ]
+        from src.config.defaults import GEMINI_MODELS
+        from src.core.model_catalog import fetch_gemini_models
+
+        if self._key_manager.key_count:
+            live = fetch_gemini_models(self._key_manager.current_key)
+            if live:
+                return live
+        return GEMINI_MODELS[:]
 
     def translate_batch(
         self,
@@ -155,10 +160,16 @@ class GeminiProvider(TranslationProvider):
                 if failed:
                     logger.warning("%d keys missing in Gemini response", len(failed))
 
+                meta = getattr(response, "usage_metadata", None)
+                in_tok = int(getattr(meta, "prompt_token_count", 0) or 0) if meta else 0
+                out_tok = int(getattr(meta, "candidates_token_count", 0) or 0) if meta else 0
                 return TranslationResult(
                     success=True,
                     data=parsed,
                     failed_keys=failed,
+                    input_tokens=in_tok,
+                    output_tokens=out_tok,
+                    attempts=attempt + 1,
                 )
 
             except Exception as e:
@@ -229,10 +240,15 @@ class OllamaProvider(TranslationProvider):
 
                 parsed = _parse_json_response(text)
                 failed = [k for k in items if k not in parsed]
+                in_tok = int(getattr(resp, "prompt_eval_count", 0) or 0)
+                out_tok = int(getattr(resp, "eval_count", 0) or 0)
                 return TranslationResult(
                     success=True,
                     data=parsed,
                     failed_keys=failed,
+                    input_tokens=in_tok,
+                    output_tokens=out_tok,
+                    attempts=attempt + 1,
                 )
 
             except Exception as e:
@@ -271,10 +287,17 @@ class OllamaProvider(TranslationProvider):
 class OpenAICompatibleProvider(TranslationProvider):
     """For providers with OpenAI-compatible API: Groq, DeepInfra, Together, OpenAI."""
 
-    def __init__(self, api_keys: list[str], provider_name: str, base_url: str):
+    def __init__(
+        self,
+        api_keys: list[str],
+        provider_name: str,
+        base_url: str,
+        known_models: Optional[list[str]] = None,
+    ):
         self._key_manager = ApiKeyManager(api_keys)
         self._provider_name = provider_name
         self._base_url = base_url
+        self._known_models = list(known_models or [])
 
     @property
     def name(self) -> str:
@@ -284,8 +307,15 @@ class OpenAICompatibleProvider(TranslationProvider):
         return self._key_manager.key_count > 0
 
     def get_models(self) -> list[str]:
+        """Ask the endpoint for its model list, falling back to known ones."""
         from src.config.defaults import PROVIDER_MODELS
-        return PROVIDER_MODELS.get(self._provider_name, [])
+        from src.core.model_catalog import fetch_openai_models
+
+        if self._key_manager.key_count:
+            live = fetch_openai_models(self._base_url, self._key_manager.current_key)
+            if live:
+                return live
+        return self._known_models or PROVIDER_MODELS.get(self._provider_name, [])
 
     def translate_batch(
         self,
@@ -294,10 +324,11 @@ class OpenAICompatibleProvider(TranslationProvider):
         config: ProjectConfig,
         on_progress: Optional[Callable] = None,
     ) -> TranslationResult:
-        from openai import OpenAI, APIError
+        from src.core.http_client import post_json, join_url
 
         max_retries = 3
         last_error: Optional[str] = None
+        url = join_url(self._base_url, "chat/completions")
 
         for attempt in range(max_retries):
             key = self._key_manager.next_key()
@@ -307,25 +338,36 @@ class OpenAICompatibleProvider(TranslationProvider):
             )
 
             try:
-                client = OpenAI(api_key=key, base_url=self._base_url)
-                payload = f"{prompt}\n{json.dumps(items, indent=4)}"
-                response = client.chat.completions.create(
-                    model=config.model,
-                    messages=[
-                        {"role": "user", "content": payload},
-                    ],
-                    response_format={"type": "json_object"},
-                )
-                text = response.choices[0].message.content or ""
+                content = f"{prompt}\n{json.dumps(items, indent=4)}"
+                # First attempt asks for strict JSON; retries drop the param for
+                # endpoints that do not implement ``response_format``.
+                body: dict = {
+                    "model": config.model,
+                    "messages": [{"role": "user", "content": content}],
+                }
+                if attempt == 0:
+                    body["response_format"] = {"type": "json_object"}
+
+                response = post_json(url, body, key)
+                choices = response.get("choices") or []
+                text = ""
+                if choices:
+                    text = (choices[0].get("message") or {}).get("content") or ""
                 if not text:
                     raise RuntimeError("Empty response from provider")
 
                 parsed = _parse_json_response(text)
                 failed = [k for k in items if k not in parsed]
+                usage = response.get("usage") or {}
+                in_tok = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
+                out_tok = int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
                 return TranslationResult(
                     success=True,
                     data=parsed,
                     failed_keys=failed,
+                    input_tokens=in_tok,
+                    output_tokens=out_tok,
+                    attempts=attempt + 1,
                 )
 
             except Exception as e:
@@ -345,20 +387,84 @@ class OpenAICompatibleProvider(TranslationProvider):
         )
 
 
+class CommandCodeProvider(OpenAICompatibleProvider):
+    """CommandCode provider (https://commandcode.ai/docs/provider).
+
+    Most models use the OpenAI Chat Completions endpoint, but Claude models are
+    only served on the Anthropic Messages endpoint, so requests are routed based
+    on the selected model id.
+    """
+
+    def __init__(self, api_keys: list[str], known_models: Optional[list[str]] = None):
+        super().__init__(
+            api_keys=api_keys,
+            provider_name="commandcode",
+            base_url=COMMANDCODE_BASE_URL,
+            known_models=known_models,
+        )
+        self._anthropic = AnthropicProvider(
+            api_keys=api_keys,
+            base_url=COMMANDCODE_ANTHROPIC_BASE_URL,
+            provider_name="commandcode",
+        )
+
+    @staticmethod
+    def _is_claude(model: str) -> bool:
+        return "claude" in str(model).lower()
+
+    def get_models(self) -> list[str]:
+        from src.config.defaults import COMMANDCODE_MODELS
+        from src.core.model_catalog import fetch_commandcode_models
+
+        if self._key_manager.key_count:
+            live = fetch_commandcode_models(self._key_manager.current_key)
+            if live:
+                return live
+        return self._known_models or COMMANDCODE_MODELS[:]
+
+    def translate_batch(
+        self,
+        items: dict[str, str],
+        prompt: str,
+        config: ProjectConfig,
+        on_progress: Optional[Callable] = None,
+    ) -> TranslationResult:
+        if self._is_claude(config.model):
+            return self._anthropic.translate_batch(items, prompt, config, on_progress)
+        return super().translate_batch(items, prompt, config, on_progress)
+
+
 class AnthropicProvider(TranslationProvider):
-    def __init__(self, api_keys: list[str]):
+    def __init__(
+        self,
+        api_keys: list[str],
+        base_url: Optional[str] = None,
+        provider_name: str = "anthropic",
+        known_models: Optional[list[str]] = None,
+    ):
         self._key_manager = ApiKeyManager(api_keys)
+        self._base_url = base_url or None
+        self._provider_name = provider_name
+        self._known_models = list(known_models or [])
 
     @property
     def name(self) -> str:
-        return "anthropic"
+        return self._provider_name
 
     def is_available(self) -> bool:
         return self._key_manager.key_count > 0
 
     def get_models(self) -> list[str]:
         from src.config.defaults import ANTHROPIC_MODELS
-        return ANTHROPIC_MODELS[:]
+        from src.core.model_catalog import fetch_anthropic_models
+
+        if self._key_manager.key_count:
+            live = fetch_anthropic_models(
+                self._key_manager.current_key, self._base_url,
+            )
+            if live:
+                return live
+        return self._known_models or ANTHROPIC_MODELS[:]
 
     def translate_batch(
         self,
@@ -377,7 +483,11 @@ class AnthropicProvider(TranslationProvider):
             logger.info("Anthropic attempt %d/%d", attempt + 1, max_retries)
 
             try:
-                client = anthropic.Anthropic(api_key=key)
+                client = (
+                    anthropic.Anthropic(api_key=key, base_url=self._base_url)
+                    if self._base_url
+                    else anthropic.Anthropic(api_key=key)
+                )
                 payload = f"{prompt}\n{json.dumps(items, indent=4)}"
                 response = client.messages.create(
                     model=config.model,
@@ -392,10 +502,16 @@ class AnthropicProvider(TranslationProvider):
 
                 parsed = _parse_json_response(text)
                 failed = [k for k in items if k not in parsed]
+                usage = getattr(response, "usage", None)
+                in_tok = int(getattr(usage, "input_tokens", 0) or 0) if usage else 0
+                out_tok = int(getattr(usage, "output_tokens", 0) or 0) if usage else 0
                 return TranslationResult(
                     success=True,
                     data=parsed,
                     failed_keys=failed,
+                    input_tokens=in_tok,
+                    output_tokens=out_tok,
+                    attempts=attempt + 1,
                 )
 
             except Exception as e:
@@ -413,18 +529,44 @@ class AnthropicProvider(TranslationProvider):
 
 
 def create_provider(app_config: AppConfig, project_config: ProjectConfig) -> TranslationProvider:
-    provider_name = project_config.provider.value
+    provider_name = str(getattr(project_config.provider, "value", project_config.provider))
 
-    if project_config.provider == ProviderType.GEMINI:
+    # ── User-defined providers take priority over built-ins ────
+    custom = app_config.get_custom_provider(provider_name)
+    if custom is not None:
+        keys = app_config.get_active_keys(custom.name)
+        if custom.api_type != "anthropic" and not custom.base_url:
+            raise ValueError(
+                f"El proveedor personalizado '{custom.name}' necesita una Base URL "
+                "(por ejemplo http://localhost:8000/v1)."
+            )
+        if custom.api_type == "anthropic":
+            return AnthropicProvider(
+                api_keys=keys,
+                base_url=custom.base_url or None,
+                provider_name=custom.name,
+                known_models=custom.models,
+            )
+        return OpenAICompatibleProvider(
+            api_keys=keys,
+            provider_name=custom.name,
+            base_url=custom.base_url,
+            known_models=custom.models,
+        )
+
+    if provider_name == ProviderType.GEMINI.value:
         return GeminiProvider(api_keys=app_config.get_active_keys("gemini"))
 
-    elif project_config.provider == ProviderType.OLLAMA:
+    elif provider_name == ProviderType.COMMANDCODE.value:
+        return CommandCodeProvider(api_keys=app_config.get_active_keys("commandcode"))
+
+    elif provider_name == ProviderType.OLLAMA.value:
         return OllamaProvider(ollama_config=app_config.ollama)
 
-    elif project_config.provider == ProviderType.ANTHROPIC:
+    elif provider_name == ProviderType.ANTHROPIC.value:
         return AnthropicProvider(api_keys=app_config.get_active_keys("anthropic"))
 
-    elif project_config.provider == ProviderType.OPENAI:
+    elif provider_name == ProviderType.OPENAI.value:
         return OpenAICompatibleProvider(
             api_keys=app_config.get_active_keys("openai"),
             provider_name="openai",
@@ -439,4 +581,4 @@ def create_provider(app_config: AppConfig, project_config: ProjectConfig) -> Tra
         )
 
     else:
-        raise ValueError(f"Unknown provider: {project_config.provider}")
+        raise ValueError(f"Unknown provider: {provider_name}")

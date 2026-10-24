@@ -31,8 +31,10 @@ python -m dts help
 |---|---|---|
 | `google-genai` | >=1.0.0 | Proveedor Gemini |
 | `ollama` | >=0.6.0 | Proveedor Ollama (local) |
-| `openai` | >=1.0.0 | Proveedores OpenAI, Groq, DeepInfra, Together |
 | `anthropic` | >=0.30.0 | Proveedor Anthropic (Claude) |
+
+> Los proveedores OpenAI-compatible (OpenAI, Groq, DeepInfra, Together,
+> CommandCode y los personalizados) usan `urllib` de la stdlib, sin SDK externo.
 | `click` | >=8.1.0 | CLI (interfaz de línea de comandos) |
 | `rich` | >=13.0.0 | Output con colores en CLI |
 | `ttkbootstrap` | >=1.10.0 | GUI (interfaz gráfica) |

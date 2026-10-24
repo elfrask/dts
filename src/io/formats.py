@@ -6,6 +6,7 @@ from typing import Optional
 
 class ProviderType(str, Enum):
     GEMINI = "gemini"
+    COMMANDCODE = "commandcode"
     OLLAMA = "ollama"
     GROQ = "groq"
     DEEPINFRA = "deepinfra"
@@ -45,6 +46,27 @@ class OllamaConfig:
 
 
 @dataclass
+class CustomProviderConfig:
+    """User-defined provider.
+
+    ``api_type`` selects which wire protocol to use:
+      - ``openai``    -> any OpenAI-compatible ``/chat/completions`` endpoint
+      - ``anthropic`` -> the Anthropic Messages API
+    API keys live in ``AppConfig.providers[name]`` like any built-in provider.
+    """
+    name: str = ""            # unique id, also the key in AppConfig.providers
+    label: str = ""           # human friendly name shown in the UI
+    api_type: str = "openai"  # "openai" | "anthropic"
+    base_url: str = ""
+    models: list[str] = field(default_factory=list)
+    enabled: bool = True
+
+    @property
+    def display_name(self) -> str:
+        return self.label or self.name
+
+
+@dataclass
 class UmtConfig:
     directory: str = ""
     auto_download: bool = False
@@ -56,8 +78,18 @@ class AppConfig:
     Contains provider credentials and connection config, never project data.
     """
     providers: dict[str, ProviderKeys] = field(default_factory=dict)
+    custom_providers: list[CustomProviderConfig] = field(default_factory=list)
     ollama: OllamaConfig = field(default_factory=OllamaConfig)
     umt: UmtConfig = field(default_factory=UmtConfig)
+
+    def get_custom_provider(self, name: str) -> Optional["CustomProviderConfig"]:
+        for cp in self.custom_providers:
+            if cp.name == name:
+                return cp
+        return None
+
+    def is_custom_provider(self, name: str) -> bool:
+        return any(cp.name == name for cp in self.custom_providers)
 
     def get_active_keys(self, provider: str) -> list[str]:
         """Return enabled key strings for a provider."""
@@ -77,6 +109,17 @@ class AppConfig:
                 }
                 for name, p in self.providers.items()
             },
+            "custom_providers": [
+                {
+                    "name": cp.name,
+                    "label": cp.label,
+                    "api_type": cp.api_type,
+                    "base_url": cp.base_url,
+                    "models": cp.models,
+                    "enabled": cp.enabled,
+                }
+                for cp in self.custom_providers
+            ],
             "ollama_host": self.ollama.host,
             "ollama_port": self.ollama.port,
             "ollama_timeout": self.ollama.timeout,
@@ -98,6 +141,19 @@ class AppConfig:
             ]
             providers[name] = ProviderKeys(keys=keys)
 
+        custom_providers = [
+            CustomProviderConfig(
+                name=cp.get("name", ""),
+                label=cp.get("label", ""),
+                api_type=cp.get("api_type", "openai"),
+                base_url=cp.get("base_url", ""),
+                models=list(cp.get("models", []) or []),
+                enabled=cp.get("enabled", True),
+            )
+            for cp in data.get("custom_providers", [])
+            if cp.get("name")
+        ]
+
         # Backward compat: migrate flat api_keys to gemini provider
         old_keys = data.get("api_keys")
         if old_keys and "gemini" not in providers:
@@ -117,6 +173,7 @@ class AppConfig:
 
         return cls(
             providers=providers,
+            custom_providers=custom_providers,
             ollama=OllamaConfig(
                 host=host_raw,
                 port=data.get("ollama_port", 11434),
@@ -138,12 +195,17 @@ class ProjectConfig:
     route_normalize_file: str = "lang_es_normalize.json"
     route_strings_result_file: str = "strings_es.json"
     route_manual_file: str = "lang_manual_edit.json"
+    route_audit_file: str = "audit.json"
 
     chunk_size: int = 200
-    provider: ProviderType = ProviderType.GEMINI
+    # Provider id. Built-ins use ProviderType values ("gemini", "ollama", ...);
+    # custom providers use their user-defined name.
+    provider: str = "gemini"
     prompt: str = ""
     model: str = "gemini-2.5-flash"
     single_translate: bool = False
+    # When False, the 7s pause between cloud batches is skipped (fast mode).
+    paused_mode: bool = True
 
     umt: UmtConfig = field(default_factory=UmtConfig)
 
@@ -156,11 +218,13 @@ class ProjectConfig:
             "route_strings_result_file": self.route_strings_result_file,
             "route_normalize_file": self.route_normalize_file,
             "route_manual_file": self.route_manual_file,
+            "route_audit_file": self.route_audit_file,
             "chunk_size": self.chunk_size,
-            "provider": self.provider.value,
+            "provider": getattr(self.provider, "value", self.provider),
             "prompt": self.prompt,
             "model": self.model,
             "single_translate": self.single_translate,
+            "paused_mode": self.paused_mode,
             "umt_directory": self.umt.directory,
         }
 
@@ -177,11 +241,13 @@ class ProjectConfig:
             route_strings_result_file=data.get("route_strings_result_file", "strings_es.json"),
             route_normalize_file=data.get("route_normalize_file", "lang_es_normalize.json"),
             route_manual_file=data.get("route_manual_file", "lang_manual_edit.json"),
+            route_audit_file=data.get("route_audit_file", "audit.json"),
             chunk_size=data.get("chunk_size", 200),
-            provider=ProviderType(data.get("provider", "gemini")),
+            provider=data.get("provider", "gemini"),
             prompt=data.get("prompt", ""),
             model=data.get("model", "gemini-2.5-flash"),
             single_translate=data.get("single_translate", False),
+            paused_mode=data.get("paused_mode", True),
             umt=UmtConfig(directory=raw_dir),
         )
 
@@ -227,6 +293,10 @@ class Project:
     def manual_file_path(self) -> Path:
         return self.resolve_path(self.config.route_manual_file)
 
+    @property
+    def audit_file_path(self) -> Path:
+        return self.resolve_path(self.config.route_audit_file)
+
 
 @dataclass
 class TranslationResult:
@@ -234,6 +304,51 @@ class TranslationResult:
     data: dict[str, str]
     failed_keys: list[str]
     error: Optional[str] = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    attempts: int = 1
+
+
+@dataclass
+class AuditEntry:
+    """One translated request, persisted in the project's audit.json."""
+    timestamp: str = ""
+    provider: str = ""
+    model: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    dialogs: int = 0
+    attempts: int = 1
+    cost: float = 0.0
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
+
+    def to_dict(self) -> dict:
+        return {
+            "timestamp": self.timestamp,
+            "provider": self.provider,
+            "model": self.model,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "dialogs": self.dialogs,
+            "attempts": self.attempts,
+            "cost": self.cost,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "AuditEntry":
+        return cls(
+            timestamp=data.get("timestamp", ""),
+            provider=data.get("provider", ""),
+            model=data.get("model", ""),
+            input_tokens=int(data.get("input_tokens", 0) or 0),
+            output_tokens=int(data.get("output_tokens", 0) or 0),
+            dialogs=int(data.get("dialogs", 0) or 0),
+            attempts=int(data.get("attempts", 1) or 1),
+            cost=float(data.get("cost", 0.0) or 0.0),
+        )
 
 
 @dataclass

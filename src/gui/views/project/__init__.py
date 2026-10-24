@@ -6,6 +6,7 @@ from src.gui.views.project.dialogs_tab import view_dialogs_popup
 from src.gui.views.project.translate_tab import TranslateTab
 from src.gui.views.project.review_tab import ReviewTab
 from src.gui.views.project.export_tab import ExportTab
+from src.gui.views.project.audit_tab import AuditTab
 
 
 class ProjectView(ttk.Frame):
@@ -59,6 +60,9 @@ class ProjectView(ttk.Frame):
 
         self._export = ExportTab(self._notebook, self.state) #type: ignore
         self._notebook.add(self._export, text="Exportar")
+
+        self._audit = AuditTab(self._notebook, self.state) #type: ignore
+        self._notebook.add(self._audit, text="Auditoría")
 
     def _open_settings(self) -> None:
         from src.gui.views.settings import SettingsDialog

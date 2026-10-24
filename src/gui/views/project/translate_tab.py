@@ -5,12 +5,21 @@ import tkinter as tk
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 
-from src.config.settings import load_app_settings, save_project
-from src.config.defaults import DEFAULT_PROMPT, DEFAULT_OLLAMA_SINGLE_PROMPT, PROVIDER_MODELS
+from src.config.settings import load_app_settings, save_app_settings, save_project
+from src.config.defaults import (
+    DEFAULT_PROMPT, DEFAULT_OLLAMA_SINGLE_PROMPT, PROVIDER_MODELS,
+    OPENAI_COMPATIBLE_BASE_URLS,
+)
 from src.core.provider import create_provider
 from src.core.translator import use_translate
-from src.core.events import EventBus, Signal
-from src.io.formats import ProviderType
+from src.core.events import EventBus, Signal, get_event_bus
+from src.core.model_catalog import fetch_models, fetch_ollama_models
+
+def _builtin_base_url(provider: str) -> str:
+    if provider == "openai":
+        return "https://api.openai.com/v1"
+    return OPENAI_COMPATIBLE_BASE_URLS.get(provider, "")
+
 
 # ── Logging handler that forwards to the GUI ────────────────────
 
@@ -41,6 +50,25 @@ class TranslateTab(ttk.Frame):
         self.rowconfigure(2, weight=1)
         self._build()
 
+        # Register once on the shared bus so the audit tab receives events too.
+        self._event_bus = get_event_bus()
+        self._event_bus.on(Signal.PROGRESS, self._on_progress)
+        self._event_bus.on(Signal.LOG, self._on_log_event)
+        self._event_bus.on(Signal.ERROR, self._on_error_event)
+        self._event_bus.on(Signal.COMPLETE, self._on_complete_event)
+        self.bind("<Destroy>", self._on_destroy)
+
+    def _on_destroy(self, event) -> None:
+        if event.widget is not self:
+            return
+        try:
+            self._event_bus.off(Signal.PROGRESS, self._on_progress)
+            self._event_bus.off(Signal.LOG, self._on_log_event)
+            self._event_bus.off(Signal.ERROR, self._on_error_event)
+            self._event_bus.off(Signal.COMPLETE, self._on_complete_event)
+        except Exception:
+            pass
+
     def _build(self) -> None:
         project = self.state.project #type: ignore
         if not project:
@@ -54,7 +82,8 @@ class TranslateTab(ttk.Frame):
 
         ttk.Label(cfg_frame, text="Proveedor:", font=("Segoe UI", 10, "bold")).grid(
             row=0, column=0, sticky="w", pady=3, padx=(0, 8))
-        self._provider_var = tk.StringVar(value=project.config.provider.value)
+        current_provider = str(getattr(project.config.provider, "value", project.config.provider))
+        self._provider_var = tk.StringVar(value=current_provider)
         self._provider_combo = ttk.Combobox(
             cfg_frame, textvariable=self._provider_var, state="readonly", width=20)
         self._provider_combo.grid(row=0, column=1, sticky="w", pady=3)
@@ -64,9 +93,17 @@ class TranslateTab(ttk.Frame):
             row=1, column=0, sticky="w", pady=3, padx=(0, 8))
         self._model_var = tk.StringVar(value=project.config.model)
         self._model_combo = ttk.Combobox(
-            cfg_frame, textvariable=self._model_var, state="readonly", width=30)
+            cfg_frame, textvariable=self._model_var, state="normal", width=30)
         self._model_combo.grid(row=1, column=1, sticky="w", pady=3)
         self._model_combo.bind("<<ComboboxSelected>>", self._save_config)
+        self._model_combo.bind("<FocusOut>", self._save_config)
+        self._model_combo.bind("<Return>", self._save_config)
+
+        self._refresh_btn = ttk.Button(
+            cfg_frame, text="Actualizar modelos", command=self._refresh_models,
+            bootstyle="secondary-outline", width=18,
+        )
+        self._refresh_btn.grid(row=1, column=2, sticky="w", pady=3, padx=(8, 0))
 
         ttk.Label(cfg_frame, text="Chunk size:", font=("Segoe UI", 10, "bold")).grid(
             row=2, column=0, sticky="w", pady=3, padx=(0, 8))
@@ -98,6 +135,16 @@ class TranslateTab(ttk.Frame):
         )
         self._single_label.grid(row=4, column=0, columnspan=3, sticky="w", pady=(0, 3))
         self._update_single_ui()
+
+        # Fast mode: skip the 7s pause between cloud batches
+        self._paused_var = tk.BooleanVar(value=not project.config.paused_mode)
+        ttk.Checkbutton(
+            cfg_frame,
+            text="Desactivar pausa entre lotes (modo rápido)",
+            variable=self._paused_var,
+            bootstyle="round-toggle",
+            command=self._on_pause_toggle,
+        ).grid(row=5, column=0, columnspan=3, sticky="w", pady=(6, 0))
 
         self._populate_providers()
 
@@ -186,11 +233,22 @@ class TranslateTab(ttk.Frame):
         app_cfg = load_app_settings()
         available = []
         for pname, pkeys in app_cfg.providers.items():
+            if app_cfg.is_custom_provider(pname):
+                continue
             if pname == "ollama":
                 if self._detect_ollama():
                     available.append(pname)
             elif any(k.enabled and k.key for k in pkeys.keys):
                 available.append(pname)
+
+        # Enabled custom providers with at least one key
+        for cp in app_cfg.custom_providers:
+            if not cp.enabled:
+                continue
+            keys = app_cfg.get_active_keys(cp.name)
+            if keys and cp.name not in available:
+                available.append(cp.name)
+
         if not available:
             available = ["gemini", "ollama" if self._detect_ollama() else None]
             available = [p for p in available if p]
@@ -208,17 +266,87 @@ class TranslateTab(ttk.Frame):
         self._populate_models()
         self._save_config()
 
+    def _static_models(self, provider: str) -> list[str]:
+        """Models known without hitting the network."""
+        if provider == "ollama":
+            return self._detect_ollama_models() or PROVIDER_MODELS.get("ollama", [])
+        app_cfg = load_app_settings()
+        custom = app_cfg.get_custom_provider(provider)
+        if custom is not None:
+            return list(custom.models)
+        return PROVIDER_MODELS.get(provider, [])
+
     def _populate_models(self) -> None:
         provider = self._provider_var.get()
-        if provider == "ollama":
-            models = self._detect_ollama_models() or PROVIDER_MODELS.get("ollama", [])
-        else:
-            models = PROVIDER_MODELS.get(provider, [])
+        models = self._static_models(provider)
         self._model_combo["values"] = models
         current = self._model_var.get()
-        if current not in models:
-            self._model_var.set(models[0] if models else "")
+        if models and current not in models:
+            self._model_var.set(models[0])
         self._save_config()
+
+    def _refresh_models(self) -> None:
+        """Ask the provider for its live model catalog (runs off the UI thread)."""
+        provider = self._provider_var.get()
+        app_cfg = load_app_settings()
+        custom = app_cfg.get_custom_provider(provider)
+        self._refresh_btn.configure(state=DISABLED, text="Cargando...")
+
+        def worker() -> None:
+            try:
+                if provider == "ollama":
+                    models = fetch_ollama_models(app_cfg.ollama.host, app_cfg.ollama.port)
+                else:
+                    if custom is not None:
+                        keys = app_cfg.get_active_keys(custom.name)
+                        models = fetch_models(
+                            custom.api_type,
+                            keys[0] if keys else "",
+                            custom.base_url,
+                        )
+                    else:
+                        keys = app_cfg.get_active_keys(provider)
+                        if provider == "gemini":
+                            api_type = "gemini"
+                        elif provider == "anthropic":
+                            api_type = "anthropic"
+                        elif provider == "commandcode":
+                            api_type = "commandcode"
+                        else:
+                            api_type = "openai"
+                        models = fetch_models(
+                            api_type,
+                            keys[0] if keys else "",
+                            _builtin_base_url(provider),
+                        )
+            except Exception as e:
+                models = []
+                logging.getLogger(__name__).warning("Refresh models failed: %s", e)
+
+            def apply() -> None:
+                try:
+                    self._refresh_btn.configure(state=NORMAL, text="Actualizar modelos")
+                    if models:
+                        self._model_combo["values"] = models
+                        if self._model_var.get() not in models:
+                            self._model_var.set(models[0])
+                        self._save_config()
+                        # Cache discovered models on the custom provider
+                        if custom is not None:
+                            custom.models = list(models)
+                            try:
+                                save_app_settings(app_cfg)
+                            except Exception:
+                                pass
+                        self._log(f"Modelos actualizados: {len(models)} disponibles")
+                    else:
+                        self._log("No se pudieron cargar modelos del proveedor", error=True)
+                except tk.TclError:
+                    pass
+
+            self.after_idle(apply)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _update_single_ui(self) -> None:
         is_ollama = self._provider_var.get() == "ollama"
@@ -234,6 +362,13 @@ class TranslateTab(ttk.Frame):
     def _on_single_toggle(self) -> None:
         self._update_single_ui()
         self._save_config()
+
+    def _on_pause_toggle(self) -> None:
+        project = self.state.project  # type: ignore
+        if not project:
+            return
+        project.config.paused_mode = not self._paused_var.get()
+        save_project(project)
 
     def _detect_ollama(self) -> bool:
         app_cfg = load_app_settings()
@@ -260,7 +395,7 @@ class TranslateTab(ttk.Frame):
         project = self.state.project #type: ignore
         if not project:
             return
-        project.config.provider = ProviderType(self._provider_var.get())
+        project.config.provider = self._provider_var.get()
         project.config.model = self._model_var.get()
         project.config.chunk_size = self._chunk_var.get()
         project.config.single_translate = self._single_var.get()
@@ -302,7 +437,7 @@ class TranslateTab(ttk.Frame):
         logging.getLogger().addHandler(self._log_handler)
 
         self._log("=== Iniciando traducción ===")
-        self._log(f"Proveedor: {project.config.provider.value}")
+        self._log(f"Proveedor: {getattr(project.config.provider, 'value', project.config.provider)}")
         self._log(f"Modelo: {project.config.model}")
         self._log(f"Chunk size: {project.config.chunk_size}")
         self._log(f"Modo: {'diálogo por diálogo' if project.config.single_translate else 'por lotes (batch)'}")
@@ -310,12 +445,7 @@ class TranslateTab(ttk.Frame):
         self._log(f"Output: {project.output_file_path}")
 
         app_cfg = load_app_settings()
-
-        event_bus = EventBus()
-        event_bus.on(Signal.PROGRESS, self._on_progress)
-        event_bus.on(Signal.LOG, self._on_log_event)
-        event_bus.on(Signal.ERROR, self._on_error_event)
-        event_bus.on(Signal.COMPLETE, self._on_complete_event)
+        event_bus = self._event_bus
 
         cancel_event = self._cancel_event
 

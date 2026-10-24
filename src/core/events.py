@@ -10,6 +10,7 @@ class Signal(Enum):
     ERROR = "error"
     COMPLETE = "complete"
     LOG = "log"
+    AUDIT = "audit"
 
 
 class EventBus:
@@ -44,6 +45,9 @@ class EventBus:
 
     def emit_log(self, level: str, message: str) -> None:
         self.emit(Signal.LOG, level=level, message=message)
+
+    def emit_audit(self, entry) -> None:
+        self.emit(Signal.AUDIT, entry=entry)
 
 
 _bus: Optional[EventBus] = None

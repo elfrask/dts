@@ -34,7 +34,7 @@ class OverviewTab(ttk.Frame):
 
         rows = [
             ("Directorio:", str(project.directory)),
-            ("Proveedor:", project.config.provider.value),
+            ("Proveedor:", str(getattr(project.config.provider, "value", project.config.provider))),
             ("Modelo:", project.config.model),
             ("Chunk size:", str(project.config.chunk_size)),
         ]

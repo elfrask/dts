@@ -37,7 +37,7 @@ dts run [--chunk-size N]
 |---|---|
 | `--chunk-size N` | Sobrescribe el tamaño de lote configurado para esta ejecución |
 
-Traduce los diálogos de `lang_input.json` que aún no están en `lang_es_out.json`, en lotes (chunks). Soporta cancelación y reintentos automáticos.
+Traduce los diálogos de `lang_input.json` que aún no están en `lang_es_out.json`, en lotes (chunks). Soporta cancelación y reintentos automáticos. El consumo de tokens y el costo estimado de cada solicitud se registran en `audit.json`.
 
 ### `apply`
 
@@ -149,7 +149,7 @@ dts settings [--show] [--provider PROVIDER] [--model MODEL] [--chunk-size N]
 | Opción | Descripción |
 |---|---|
 | `--show` | Muestra la configuración actual del proyecto |
-| `--provider {gemini,ollama,groq,deepinfra,together,anthropic,openai}` | Cambia el proveedor de IA |
+| `--provider PROVIDER` | Cambia el proveedor de IA (id integrado o nombre de un proveedor personalizado) |
 | `--model <nombre>` | Cambia el modelo activo |
 | `--chunk-size N` | Cambia el tamaño de lote |
 
@@ -158,15 +158,22 @@ dts settings [--show] [--provider PROVIDER] [--model MODEL] [--chunk-size N]
 Gestiona la configuración global de la aplicación.
 
 ```bash
-dts config [--show] [--add-key KEY] [--ollama-host HOST] [--ollama-timeout S]
+dts config [--show] [--add-key KEY] [--provider NAME] [--ollama-host HOST] [--ollama-timeout S]
 ```
 
 | Opción | Descripción |
 |---|---|
 | `--show` | Muestra la configuración global (API keys ocultas) |
-| `--add-key KEY` | Agrega una clave de API para Gemini |
+| `--add-key KEY` | Agrega una clave de API |
+| `--provider NAME` | Proveedor al que se añade la key (defecto: `gemini`) |
 | `--ollama-host HOST` | Establece el host de Ollama |
 | `--ollama-timeout S` | Establece el timeout de Ollama en segundos |
+
+Ejemplo con CommandCode:
+
+```bash
+dts config --provider commandcode --add-key "cmd_..."
+```
 
 ### `help`
 

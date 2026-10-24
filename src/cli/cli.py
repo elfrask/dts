@@ -27,7 +27,7 @@ from src.io.file_writer import (
     write_translation_dict,
     write_json,
 )
-from src.io.formats import ProjectConfig, AppConfig, Project, ProviderType, ProviderKeys
+from src.io.formats import ProjectConfig, AppConfig, Project, ProviderKeys
 from src.processors.matcher import (
     generate_input,
     apply_strings,
@@ -243,7 +243,7 @@ def cmd_view(ctx: click.Context) -> None:
 
 
 @cli.command("settings")
-@click.option("--provider", type=click.Choice(["gemini", "ollama"]), help="Set provider")
+@click.option("--provider", type=str, help="Set provider (built-in id or custom provider name)")
 @click.option("--model", type=str, help="Set model name")
 @click.option("--chunk-size", type=int, help="Set chunk size")
 @click.option("--show", is_flag=True, help="Show current settings")
@@ -259,7 +259,8 @@ def cmd_settings(
     app_config: AppConfig = ctx.obj["app_config"]
 
     if show:
-        click.echo(f"Provider:     {project.config.provider.value}")
+        _provider = getattr(project.config.provider, "value", project.config.provider)
+        click.echo(f"Provider:     {_provider}")
         click.echo(f"Model:        {project.config.model}")
         click.echo(f"Chunk size:   {project.config.chunk_size}")
         click.echo(f"Project dir:  {project.directory}")
@@ -269,7 +270,7 @@ def cmd_settings(
 
     changed = False
     if provider:
-        project.config.provider = ProviderType(provider)
+        project.config.provider = provider
         changed = True
     if model:
         project.config.model = model
@@ -284,7 +285,9 @@ def cmd_settings(
 
 
 @cli.command("config")
-@click.option("--add-key", type=str, help="Add a Gemini API key")
+@click.option("--add-key", type=str, help="Add an API key")
+@click.option("--provider", type=str, default="gemini",
+              help="Provider to add the key to (default: gemini)")
 @click.option("--ollama-host", type=str, help="Set Ollama host")
 @click.option("--ollama-timeout", type=int, help="Set Ollama timeout")
 @click.option("--show", is_flag=True, help="Show app config")
@@ -292,6 +295,7 @@ def cmd_settings(
 def cmd_config(
     ctx: click.Context,
     add_key: str | None,
+    provider: str,
     ollama_host: str | None,
     ollama_timeout: int | None,
     show: bool,
@@ -303,6 +307,13 @@ def cmd_config(
             enabled = sum(1 for k in pkeys.keys if k.enabled)
             total = len(pkeys.keys)
             click.echo(f"{pname}: {enabled}/{total} keys active")
+        if app_config.custom_providers:
+            click.echo("Custom providers:")
+            for cp in app_config.custom_providers:
+                click.echo(
+                    f"  {cp.name} [{cp.api_type}] {cp.base_url or '(no base url)'}"
+                    f"  ({len(cp.models)} models)"
+                )
         click.echo(f"Ollama host:    {app_config.ollama.host}:{app_config.ollama.port}")
         click.echo(f"Ollama timeout: {app_config.ollama.timeout}")
         click.echo(f"UMT directorio:  {app_config.umt.directory or '(not set)'}")
@@ -310,11 +321,14 @@ def cmd_config(
 
     changed = False
     if add_key:
-        gemini = app_config.providers.setdefault("gemini", ProviderKeys())
+        pname = provider or "gemini"
+        pkeys = app_config.providers.setdefault(pname, ProviderKeys())
         from src.io.formats import ApiKeyEntry
-        gemini.keys.append(ApiKeyEntry(name=f"key{len(gemini.keys)+1}", key=add_key, enabled=True))
+        pkeys.keys.append(
+            ApiKeyEntry(name=f"key{len(pkeys.keys)+1}", key=add_key, enabled=True)
+        )
         changed = True
-        click.echo(f"API key added ({len(gemini.keys)} total for gemini)")
+        click.echo(f"API key added ({len(pkeys.keys)} total for {pname})")
     if ollama_host:
         app_config.ollama.host = ollama_host
         changed = True
