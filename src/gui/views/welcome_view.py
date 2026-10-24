@@ -55,14 +55,8 @@ class WelcomeView(ttk.Frame):
 
         ttk.Label(
             _header,
-            text="DTS v2",
-            font=("Segoe UI", 28, "bold"),
-        ).pack()
-        ttk.Label(
-            _header,
             text="v2.2 dev-20261024",
-            font=("Segoe UI", 11),
-            bootstyle="secondary",
+            font=("Segoe UI", 28, "bold"),
         ).pack()
         ttk.Label(
             _header,
